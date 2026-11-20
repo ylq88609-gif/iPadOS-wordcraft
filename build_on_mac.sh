@@ -152,6 +152,17 @@ if echo "$OTOOL_OUT" | grep -q "libwordcraft_ios\.dylib"; then
 fi
 echo "✅ 动态库依赖校验通过（未链接 libwordcraft_ios.dylib）"
 
+echo "🔍 检查 iPad 全屏与文件共享 Info.plist 配置..."
+PLIST_DUMP="$(plutil -p "$APP_PATH/Info.plist")"
+for required_key in UILaunchScreen UISupportedInterfaceOrientations UIFileSharingEnabled LSSupportsOpeningDocumentsInPlace UIApplicationSupportsIndirectInputEvents CFBundleIcons; do
+  if ! echo "$PLIST_DUMP" | grep -q "\"$required_key"; then
+    echo "❌ 验收失败: WordCraft.app/Info.plist 缺少关键字段 $required_key（可能导致 iPad 非全屏兼容缩放或文件共享失效）！"
+    echo "   请检查 apps/wordcraft-ios/xcode-host/project.yml 的 info.properties 配置。"
+    exit 1
+  fi
+done
+echo "✅ Info.plist 全屏与文件共享字段校验通过"
+
 mkdir -p Payload
 cp -R "$APP_PATH" Payload/
 zip -r -q "$OUTPUT_IPA" Payload

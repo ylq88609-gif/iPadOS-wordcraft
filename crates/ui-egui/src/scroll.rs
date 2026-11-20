@@ -84,7 +84,7 @@ impl ScrollSpeed {
     /// On macOS and web browsers, the host platform already accelerates trackpad deltas and handles
     /// inertia, so Normal speed is 1.0.
     pub fn touchpad_factor(self) -> f32 {
-        const NORMAL_TOUCHPAD_FACTOR: f32 = if cfg!(any(target_os = "macos", target_arch = "wasm32")) { 1.0 } else { 4.0 };
+        const NORMAL_TOUCHPAD_FACTOR: f32 = if cfg!(any(target_os = "macos", target_os = "ios", target_arch = "wasm32")) { 1.0 } else { 4.0 };
         NORMAL_TOUCHPAD_FACTOR * self.factor()
     }
 

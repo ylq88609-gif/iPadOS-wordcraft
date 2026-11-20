@@ -48,7 +48,10 @@
 4. **IME 与交互稳定性红线**
    - 修改 `main.m` 中 `WordCraftImeView` 时必须保留 `gInBecome` 防递归锁。
    - 双指触屏滑动（`panTouch`）与触控板滚动（`panTrackpad`）已拆分以释放单指拖拽给图形/选区，修改手势时不得破坏该隔离。
-5. **高风险操作人工确认**
+5. **XcodeGen `Info.plist` 全屏防覆盖红线**
+   - `apps/wordcraft-ios/xcode-host/project.yml` 的 `info.properties` 必须完整保留 `UILaunchScreen: {}`、`UIDeviceFamily: [2]`、`UIRequiresFullScreen: true`、`UISupportedInterfaceOrientations~ipad`（4 方向）、`UIFileSharingEnabled: true` 与 `LSSupportsOpeningDocumentsInPlace: true`，因为每次 `xcodegen generate` 都会覆盖重写 `Info.plist`（缺少 `UILaunchScreen` 会导致 iPad 退化为非全屏兼容缩放）。
+   - `build_on_mac.sh` 验收阶段会自动用 `plutil -p` 校验这些字段。
+6. **高风险操作人工确认**
    - 执行 `git push --force`、删除备份目录（如 `_Backup_Before_Font_Alpha`）或删除 Google Sheet 数据前，必须先征求用户明确确认。
 
 ---

@@ -66,8 +66,12 @@ fn rename(s: &mut Session, v: &Value) -> CmdResult {
             destination.set_file_name(if given { name.to_string() } else { format!("{name}.{ext}") });
         }
         if destination != *path {
-            #[cfg(not(target_arch = "wasm32"))]
+            #[cfg(all(not(target_arch = "wasm32"), not(target_os = "ios")))]
             {
+                crate::io::rename_file(path, &destination).map_err(CmdError::Failed)?;
+            }
+            #[cfg(target_os = "ios")]
+            if path.exists() {
                 crate::io::rename_file(path, &destination).map_err(CmdError::Failed)?;
             }
             s.path = Some(destination);

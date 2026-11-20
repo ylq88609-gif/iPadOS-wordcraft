@@ -6,17 +6,38 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+typedef struct {
+    float view_w;
+    float view_h;
+    float drawable_w;
+    float drawable_h;
+    float safe_top;
+    float safe_bottom;
+    float safe_left;
+    float safe_right;
+    float keyboard_overlap;
+} WordCraftIosMetrics;
+
 extern void wordcraft_ios_main(void);
 extern void wordcraft_ios_register_file_picker(void (*picker)(const char *));
 extern void wordcraft_ios_register_file_exporter(void (*exporter)(const char *));
 extern void wordcraft_ios_register_ime_sync(void (*sync_fn)(bool, float, float, float, float));
+extern void wordcraft_ios_register_metrics(bool (*metrics_fn)(WordCraftIosMetrics *out));
 extern void wordcraft_ios_ime_preedit(const char *text_ptr, int32_t cursor_start, int32_t cursor_end);
 extern void wordcraft_ios_ime_commit(const char *text_ptr);
 extern void wordcraft_ios_ime_key(int32_t key_code);
 extern void wordcraft_ios_ime_shortcut(int32_t hid_code, int32_t mod_flags);
 extern void wordcraft_ios_paste_text(const char *text_ptr);
 extern void wordcraft_ios_register_clipboard(char *(*get_fn)(void), void (*free_fn)(char *), void (*set_fn)(const char *));
+extern void wordcraft_ios_register_url_opener(void (*opener)(const char *));
 extern void wordcraft_ios_scroll(float x, float y, float dx, float dy);
+extern void wordcraft_ios_pointer_hover(float x, float y);
+extern void wordcraft_ios_secondary_click(float x, float y);
+extern void wordcraft_ios_long_press(float x, float y);
+extern void wordcraft_ios_pinch_zoom(float x, float y, float scale_delta);
+extern bool wordcraft_ios_should_touch_scroll(float x, float y);
+extern void wordcraft_ios_touch_scroll_begin(void);
+extern void wordcraft_ios_request_repaint(void);
 extern void wordcraft_ios_deliver_file(const char *name_ptr, const uint8_t *data_ptr, size_t data_len);
 extern void wordcraft_ios_cancel_dialog(void);
 extern void wordcraft_ios_report_picker_error(const char *msg_ptr);
@@ -487,11 +508,25 @@ static const unsigned long long kMaxDocFileBytes  = 128ULL * 1024ULL * 1024ULL;
 
 @end
 
+// ============================================================================
+// Apple HIG iPadOS Gesture & Pointer Coordinator
+// - Touchscreen: 1-finger canvas scroll (yielding to handles/tables/UI/double-tap-drag),
+//   2-finger scroll, 2-finger pinch zoom, long-press context menu, 3-finger undo/redo.
+// - Trackpad/Mouse (Indirect Pointer): Hover, left-drag selection, secondary-click context
+//   menu (delaysTouchesBegan so selection stays intact), 2-finger scroll, pinch zoom.
+// ============================================================================
+
 @interface WordCraftScrollHandler : NSObject <UIGestureRecognizerDelegate>
 @property (nonatomic, strong) CADisplayLink *displayLink;
 @property (nonatomic, assign) double vx;
 @property (nonatomic, assign) double vy;
 @property (nonatomic, assign) CGPoint lastLoc;
+@property (nonatomic, assign) CGFloat lastPinchScale;
+@property (nonatomic, weak) UIPanGestureRecognizer *panTouch1;
+@property (nonatomic, weak) UIPanGestureRecognizer *panTouch2;
+@property (nonatomic, weak) UIPanGestureRecognizer *panTrackpad;
+@property (nonatomic, weak) UIPinchGestureRecognizer *pinchRecognizer;
+@property (nonatomic, weak) UILongPressGestureRecognizer *longPressRecognizer;
 @end
 
 @implementation WordCraftScrollHandler
@@ -503,6 +538,7 @@ static const unsigned long long kMaxDocFileBytes  = 128ULL * 1024ULL * 1024ULL;
     self.vx = 0;
     self.vy = 0;
 }
+
 - (void)onDisplayLink:(CADisplayLink *)link {
     double dt = link.targetTimestamp - link.timestamp;
     if (dt <= 0.0 || dt > 0.05) dt = 1.0 / 60.0;
@@ -511,16 +547,21 @@ static const unsigned long long kMaxDocFileBytes  = 128ULL * 1024ULL * 1024ULL;
     if (fabs(dx) > 0.05 || fabs(dy) > 0.05) {
         wordcraft_ios_scroll((float)self.lastLoc.x, (float)self.lastLoc.y, (float)dx, (float)dy);
     }
-    double decay = pow(0.94, dt * 60.0);
+    double decay = pow(0.955, dt * 60.0);
     self.vx *= decay;
     self.vy *= decay;
-    if (hypot(self.vx, self.vy) < 15.0) {
+    if (hypot(self.vx, self.vy) < 12.0) {
         [self stopInertia];
     }
 }
+
 - (void)handlePan:(UIPanGestureRecognizer *)pan {
+    BOOL isDirectTouchPan = (pan == self.panTouch1 || pan == self.panTouch2);
     if (pan.state == UIGestureRecognizerStateBegan) {
         [self stopInertia];
+        if (isDirectTouchPan) {
+            wordcraft_ios_touch_scroll_begin();
+        }
         self.lastLoc = [pan locationInView:pan.view];
     } else if (pan.state == UIGestureRecognizerStateChanged) {
         CGPoint delta = [pan translationInView:pan.view];
@@ -543,8 +584,88 @@ static const unsigned long long kMaxDocFileBytes  = 128ULL * 1024ULL * 1024ULL;
         [self stopInertia];
     }
 }
+
+- (void)handlePinch:(UIPinchGestureRecognizer *)pinch {
+    if (pinch.state == UIGestureRecognizerStateBegan) {
+        [self stopInertia];
+        wordcraft_ios_touch_scroll_begin();
+        self.lastPinchScale = (pinch.scale > 0.01) ? pinch.scale : 1.0;
+    } else if (pinch.state == UIGestureRecognizerStateChanged) {
+        CGFloat scale = pinch.scale;
+        if (scale > 0.01 && self.lastPinchScale > 0.01) {
+            CGFloat delta = scale / self.lastPinchScale;
+            self.lastPinchScale = scale;
+            if (fabs(delta - 1.0) > 0.001) {
+                CGPoint loc = [pinch locationInView:pinch.view];
+                wordcraft_ios_pinch_zoom((float)loc.x, (float)loc.y, (float)delta);
+            }
+        }
+    } else {
+        self.lastPinchScale = 1.0;
+    }
+}
+
+- (void)handleHover:(UIHoverGestureRecognizer *)hover API_AVAILABLE(ios(13.0)) {
+    if (hover.state == UIGestureRecognizerStateBegan || hover.state == UIGestureRecognizerStateChanged) {
+        CGPoint loc = [hover locationInView:hover.view];
+        wordcraft_ios_pointer_hover((float)loc.x, (float)loc.y);
+    }
+}
+
+- (void)handleSecondaryClick:(UITapGestureRecognizer *)tap {
+    if (tap.state == UIGestureRecognizerStateEnded) {
+        [self stopInertia];
+        CGPoint loc = [tap locationInView:tap.view];
+        wordcraft_ios_secondary_click((float)loc.x, (float)loc.y);
+    }
+}
+
+- (void)handleLongPress:(UILongPressGestureRecognizer *)lp {
+    if (lp.state == UIGestureRecognizerStateBegan) {
+        [self stopInertia];
+        CGPoint loc = [lp locationInView:lp.view];
+        wordcraft_ios_long_press((float)loc.x, (float)loc.y);
+    }
+}
+
+- (void)handleSwipeUndo:(UISwipeGestureRecognizer *)swipe {
+    if (swipe.state == UIGestureRecognizerStateEnded) {
+        [self stopInertia];
+        wordcraft_ios_touch_scroll_begin();
+        wordcraft_ios_ime_shortcut(29, 8); // Cmd+Z (Undo)
+    }
+}
+
+- (void)handleSwipeRedo:(UISwipeGestureRecognizer *)swipe {
+    if (swipe.state == UIGestureRecognizerStateEnded) {
+        [self stopInertia];
+        wordcraft_ios_touch_scroll_begin();
+        wordcraft_ios_ime_shortcut(29, 9); // Cmd+Shift+Z (Redo)
+    }
+}
+
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer == self.panTouch1) {
+        CGPoint loc = [gestureRecognizer locationInView:gestureRecognizer.view];
+        return wordcraft_ios_should_touch_scroll((float)loc.x, (float)loc.y) ? YES : NO;
+    }
+    return YES;
+}
+
 - (BOOL)gestureRecognizer:(UIGestureRecognizer *)gestureRecognizer
 shouldRecognizeSimultaneouslyWithGestureRecognizer:(UIGestureRecognizer *)otherGestureRecognizer {
+    // Allow 2-finger pan + pinch to work together smoothly (like Apple Pages/Photos)
+    if ((gestureRecognizer == self.panTouch2 && otherGestureRecognizer == self.pinchRecognizer) ||
+        (gestureRecognizer == self.pinchRecognizer && otherGestureRecognizer == self.panTouch2)) {
+        return YES;
+    }
+    // Never let 1-finger touch scroll conflict with pinch, long-press, or 2-finger pan
+    if (gestureRecognizer == self.panTouch1 || otherGestureRecognizer == self.panTouch1) {
+        return NO;
+    }
+    if (gestureRecognizer == self.longPressRecognizer || otherGestureRecognizer == self.longPressRecognizer) {
+        return NO;
+    }
     return YES;
 }
 @end
@@ -555,19 +676,35 @@ static BOOL gInstalledScroll = NO;
 static void wordcraft_install_scroll_recognizer(UIView *hostView) {
     if (gInstalledScroll || hostView == nil) return;
     gScrollHandler = [[WordCraftScrollHandler alloc] init];
+    gScrollHandler.lastPinchScale = 1.0;
 
-    // 1. Touchscreen: 2-finger swipe scrolls, leaving 1-finger drag free for shape resizing & text selection
-    UIPanGestureRecognizer *panTouch = [[UIPanGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handlePan:)];
-    panTouch.minimumNumberOfTouches = 2;
-    panTouch.maximumNumberOfTouches = 2;
-    panTouch.allowedTouchTypes = @[@(UITouchTypeDirect)];
-    panTouch.cancelsTouchesInView = NO;
-    panTouch.delaysTouchesBegan = NO;
-    panTouch.delaysTouchesEnded = NO;
-    panTouch.delegate = gScrollHandler;
-    [hostView addGestureRecognizer:panTouch];
+    // 1. Touchscreen 1-finger canvas scroll (Apple HIG / Pages style):
+    //    Only begins inside unobstructed document canvas (yields to handles, tables, ink,
+    //    scrollbars, dialogs, popups, and double-tap word drag).
+    UIPanGestureRecognizer *panTouch1 = [[UIPanGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handlePan:)];
+    panTouch1.minimumNumberOfTouches = 1;
+    panTouch1.maximumNumberOfTouches = 1;
+    panTouch1.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    panTouch1.cancelsTouchesInView = YES;
+    panTouch1.delaysTouchesBegan = NO;
+    panTouch1.delaysTouchesEnded = NO;
+    panTouch1.delegate = gScrollHandler;
+    gScrollHandler.panTouch1 = panTouch1;
+    [hostView addGestureRecognizer:panTouch1];
 
-    // 2. Magic Keyboard Trackpad: 2-finger indirect scroll
+    // 2. Touchscreen 2-finger scroll (always available, even over selected objects)
+    UIPanGestureRecognizer *panTouch2 = [[UIPanGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handlePan:)];
+    panTouch2.minimumNumberOfTouches = 2;
+    panTouch2.maximumNumberOfTouches = 2;
+    panTouch2.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    panTouch2.cancelsTouchesInView = YES;
+    panTouch2.delaysTouchesBegan = NO;
+    panTouch2.delaysTouchesEnded = NO;
+    panTouch2.delegate = gScrollHandler;
+    gScrollHandler.panTouch2 = panTouch2;
+    [hostView addGestureRecognizer:panTouch2];
+
+    // 3. Magic Keyboard Trackpad / Mouse: 2-finger indirect scroll
     if (@available(iOS 13.4, *)) {
         UIPanGestureRecognizer *panTrackpad = [[UIPanGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handlePan:)];
         panTrackpad.allowedTouchTypes = @[];
@@ -576,8 +713,63 @@ static void wordcraft_install_scroll_recognizer(UIView *hostView) {
         panTrackpad.delaysTouchesBegan = NO;
         panTrackpad.delaysTouchesEnded = NO;
         panTrackpad.delegate = gScrollHandler;
+        gScrollHandler.panTrackpad = panTrackpad;
         [hostView addGestureRecognizer:panTrackpad];
     }
+
+    // 4. Pinch-to-Zoom (works for both 2-finger touch pinch & Magic Keyboard trackpad pinch)
+    UIPinchGestureRecognizer *pinch = [[UIPinchGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handlePinch:)];
+    pinch.cancelsTouchesInView = YES;
+    pinch.delaysTouchesBegan = NO;
+    pinch.delegate = gScrollHandler;
+    gScrollHandler.pinchRecognizer = pinch;
+    [hostView addGestureRecognizer:pinch];
+
+    // 5. Magic Keyboard Trackpad / Mouse / Apple Pencil Hover
+    if (@available(iOS 13.0, *)) {
+        UIHoverGestureRecognizer *hover = [[UIHoverGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handleHover:)];
+        hover.delegate = gScrollHandler;
+        [hostView addGestureRecognizer:hover];
+    }
+
+    // 6. Magic Keyboard Trackpad / Mouse Secondary Click (Right-Click / 2-Finger Click)
+    if (@available(iOS 13.4, *)) {
+        UITapGestureRecognizer *secondaryClick = [[UITapGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handleSecondaryClick:)];
+        secondaryClick.allowedTouchTypes = @[@(UITouchTypeIndirectPointer)];
+        secondaryClick.buttonMaskRequired = UIEventButtonMaskSecondary;
+        secondaryClick.delaysTouchesBegan = YES;
+        secondaryClick.cancelsTouchesInView = YES;
+        secondaryClick.delegate = gScrollHandler;
+        [hostView addGestureRecognizer:secondaryClick];
+    }
+
+    // 7. Touchscreen Long-Press (0.5s) -> Context Menu
+    UILongPressGestureRecognizer *longPress = [[UILongPressGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handleLongPress:)];
+    longPress.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    longPress.minimumPressDuration = 0.5;
+    longPress.allowableMovement = 10.0;
+    longPress.cancelsTouchesInView = YES;
+    longPress.delaysTouchesBegan = NO;
+    longPress.delegate = gScrollHandler;
+    gScrollHandler.longPressRecognizer = longPress;
+    [hostView addGestureRecognizer:longPress];
+
+    // 8. iPadOS Standard 3-Finger Swipe Left/Right -> Undo / Redo
+    UISwipeGestureRecognizer *swipeUndo = [[UISwipeGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handleSwipeUndo:)];
+    swipeUndo.numberOfTouchesRequired = 3;
+    swipeUndo.direction = UISwipeGestureRecognizerDirectionLeft;
+    swipeUndo.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    swipeUndo.cancelsTouchesInView = YES;
+    swipeUndo.delegate = gScrollHandler;
+    [hostView addGestureRecognizer:swipeUndo];
+
+    UISwipeGestureRecognizer *swipeRedo = [[UISwipeGestureRecognizer alloc] initWithTarget:gScrollHandler action:@selector(handleSwipeRedo:)];
+    swipeRedo.numberOfTouchesRequired = 3;
+    swipeRedo.direction = UISwipeGestureRecognizerDirectionRight;
+    swipeRedo.allowedTouchTypes = @[@(UITouchTypeDirect)];
+    swipeRedo.cancelsTouchesInView = YES;
+    swipeRedo.delegate = gScrollHandler;
+    [hostView addGestureRecognizer:swipeRedo];
 
     gInstalledScroll = YES;
 }
@@ -615,7 +807,7 @@ static void wordcraft_install_winit_responder_hook(UIView *hostView) {
     }
 }
 
-static UIViewController *wordcraft_top_view_controller(void) {
+static UIWindow *wordcraft_key_window(void) {
     UIWindow *foundWindow = nil;
     for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
         if ([scene isKindOfClass:[UIWindowScene class]] &&
@@ -636,29 +828,161 @@ static UIViewController *wordcraft_top_view_controller(void) {
             }
         }
     }
-    UIViewController *root = foundWindow.rootViewController;
+    return foundWindow;
+}
+
+static UIViewController *wordcraft_top_view_controller(void) {
+    UIViewController *root = wordcraft_key_window().rootViewController;
     while (root.presentedViewController != nil) {
         root = root.presentedViewController;
     }
     return root;
 }
 
+static CAMetalLayer *wordcraft_find_metal_layer(UIView *hostView) {
+    if (hostView == nil) return nil;
+    if ([hostView.layer isKindOfClass:[CAMetalLayer class]]) {
+        return (CAMetalLayer *)hostView.layer;
+    }
+    for (CALayer *sub in hostView.layer.sublayers) {
+        if ([sub isKindOfClass:[CAMetalLayer class]]) {
+            return (CAMetalLayer *)sub;
+        }
+    }
+    return nil;
+}
+
+static WordCraftIosMetrics gLastMetrics;
+static BOOL gHasLastMetrics = NO;
+static float gKeyboardOverlap = 0.0f;
+
+@interface WordCraftKeyboardObserver : NSObject
+@end
+
+@implementation WordCraftKeyboardObserver
+- (void)onKeyboardWillChangeFrame:(NSNotification *)note {
+    CGRect endScreen = [note.userInfo[UIKeyboardFrameEndUserInfoKey] CGRectValue];
+    UIWindow *win = wordcraft_key_window();
+    UIView *hostView = win.rootViewController.view;
+    if (hostView != nil && !CGRectIsEmpty(endScreen)) {
+        CGRect endInView = [hostView convertRect:endScreen fromView:nil];
+        CGRect overlap = CGRectIntersection(hostView.bounds, endInView);
+        CGFloat h = CGRectIsNull(overlap) ? 0.0 : overlap.size.height;
+        // Ignore transient hardware-keyboard QuickType shortcut bars (< 120pt) so they don't push
+        // a thick empty strip below the status bar; only lift the viewport for real on-screen keyboards.
+        if (h < 120.0 || h > hostView.bounds.size.height * 0.75) {
+            h = 0.0;
+        }
+        gKeyboardOverlap = (float)h;
+    } else {
+        gKeyboardOverlap = 0.0f;
+    }
+    wordcraft_ios_request_repaint();
+}
+
+- (void)onKeyboardWillHide:(NSNotification *)note {
+    gKeyboardOverlap = 0.0f;
+    wordcraft_ios_request_repaint();
+}
+@end
+
+static WordCraftKeyboardObserver *gKeyboardObserver = nil;
+
+static void wordcraft_install_keyboard_observer(void) {
+    if (gKeyboardObserver != nil) return;
+    gKeyboardObserver = [[WordCraftKeyboardObserver alloc] init];
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    [nc addObserver:gKeyboardObserver
+           selector:@selector(onKeyboardWillChangeFrame:)
+               name:UIKeyboardWillChangeFrameNotification
+             object:nil];
+    [nc addObserver:gKeyboardObserver
+           selector:@selector(onKeyboardWillHide:)
+               name:UIKeyboardWillHideNotification
+             object:nil];
+    [nc addObserver:gKeyboardObserver
+           selector:@selector(onKeyboardWillHide:)
+               name:UIKeyboardDidHideNotification
+             object:nil];
+}
+
+static bool wordcraft_ios_query_metrics(WordCraftIosMetrics *out) {
+    if (out == NULL) {
+        return false;
+    }
+    if (![NSThread isMainThread]) {
+        if (gHasLastMetrics) {
+            *out = gLastMetrics;
+            return true;
+        }
+        return false;
+    }
+    UIWindow *win = wordcraft_key_window();
+    UIView *hostView = win.rootViewController.view;
+    if (win == nil || hostView == nil) {
+        if (gHasLastMetrics) {
+            *out = gLastMetrics;
+            return true;
+        }
+        return false;
+    }
+    CGSize bounds = hostView.bounds.size;
+    if (bounds.width <= 1.0 || bounds.height <= 1.0) {
+        if (gHasLastMetrics) {
+            *out = gLastMetrics;
+            return true;
+        }
+        return false;
+    }
+    UIEdgeInsets insets = win.safeAreaInsets;
+    double drawableW = bounds.width - insets.left - insets.right;
+    double drawableH = bounds.height - insets.top - insets.bottom;
+    CAMetalLayer *metalLayer = wordcraft_find_metal_layer(hostView);
+    if (metalLayer != nil && metalLayer.drawableSize.width > 1.0 && metalLayer.drawableSize.height > 1.0) {
+        CGFloat scale = metalLayer.contentsScale;
+        if (scale <= 0.0) scale = hostView.contentScaleFactor;
+        if (scale <= 0.0) scale = win.screen.scale;
+        if (scale <= 0.0) scale = 1.0;
+        drawableW = metalLayer.drawableSize.width / scale;
+        drawableH = metalLayer.drawableSize.height / scale;
+    }
+    if (drawableW <= 1.0) drawableW = bounds.width;
+    if (drawableH <= 1.0) drawableH = bounds.height;
+
+    WordCraftIosMetrics m;
+    m.view_w = (float)bounds.width;
+    m.view_h = (float)bounds.height;
+    m.drawable_w = (float)drawableW;
+    m.drawable_h = (float)drawableH;
+    m.safe_top = (float)insets.top;
+    m.safe_bottom = (float)insets.bottom;
+    m.safe_left = (float)insets.left;
+    m.safe_right = (float)insets.right;
+    m.keyboard_overlap = gKeyboardOverlap;
+
+    gLastMetrics = m;
+    gHasLastMetrics = YES;
+    *out = m;
+    return true;
+}
+
 void wordcraft_ios_sync_ime(bool active, float x, float y, float w, float h) {
     dispatch_async(dispatch_get_main_queue(), ^{
         gImeActive = active ? YES : NO;
-        UIViewController *topVC = wordcraft_top_view_controller();
-        if (topVC == nil || topVC.view == nil) {
+        UIViewController *rootVC = wordcraft_key_window().rootViewController;
+        if (rootVC == nil || rootVC.view == nil) {
             return;
         }
-        wordcraft_install_winit_responder_hook(topVC.view);
-        wordcraft_install_scroll_recognizer(topVC.view);
+        wordcraft_install_winit_responder_hook(rootVC.view);
+        wordcraft_install_scroll_recognizer(rootVC.view);
+        wordcraft_install_keyboard_observer();
 
         if (gImeView == nil) {
             gImeView = [[WordCraftImeView alloc] initWithFrame:CGRectMake(x, y, 2, 20)];
-            [topVC.view addSubview:gImeView];
-        } else if (gImeView.superview != topVC.view) {
+            [rootVC.view addSubview:gImeView];
+        } else if (gImeView.superview != rootVC.view) {
             [gImeView removeFromSuperview];
-            [topVC.view addSubview:gImeView];
+            [rootVC.view addSubview:gImeView];
         }
         CGRect rect = CGRectMake(x, y, w > 1 ? w : 2, h > 1 ? h : 20);
         gImeView.frame = CGRectMake(rect.origin.x, rect.origin.y, 2, rect.size.height);
@@ -886,16 +1210,45 @@ static void wordcraft_ios_clipboard_set(const char *text_ptr) {
     }
 }
 
+static void wordcraft_ios_open_url(const char *url_cstr) {
+    if (url_cstr == NULL) return;
+    NSString *raw = [NSString stringWithUTF8String:url_cstr];
+    if (raw == nil) return;
+    NSString *trimmed = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (trimmed.length == 0) return;
+
+    NSURL *url = [NSURL URLWithString:trimmed];
+    if (url == nil) {
+        NSString *encoded = [trimmed stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+        if (encoded != nil) {
+            url = [NSURL URLWithString:encoded];
+        }
+    }
+    if (url == nil) return;
+    NSString *scheme = [url.scheme lowercaseString];
+    if (!([scheme isEqualToString:@"http"] || [scheme isEqualToString:@"https"] || [scheme isEqualToString:@"mailto"])) {
+        return;
+    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
+    });
+}
+
 int main(int argc, char * argv[]) {
     @autoreleasepool {
         setenv("WORDCRAFT_LANGUAGE", "zh-CN", 0);
         wordcraft_ios_register_file_picker(wordcraft_ios_open_file_picker);
         wordcraft_ios_register_file_exporter(wordcraft_ios_export_file);
         wordcraft_ios_register_ime_sync(wordcraft_ios_sync_ime);
+        wordcraft_ios_register_metrics(wordcraft_ios_query_metrics);
         wordcraft_ios_register_clipboard(wordcraft_ios_clipboard_get, wordcraft_ios_clipboard_free, wordcraft_ios_clipboard_set);
+        wordcraft_ios_register_url_opener(wordcraft_ios_open_url);
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            UIViewController *vc = wordcraft_top_view_controller();
-            if (vc && vc.view) { wordcraft_install_scroll_recognizer(vc.view); }
+            UIViewController *vc = wordcraft_key_window().rootViewController;
+            if (vc && vc.view) {
+                wordcraft_install_scroll_recognizer(vc.view);
+                wordcraft_install_keyboard_observer();
+            }
         });
         wordcraft_ios_main();
         return 0;

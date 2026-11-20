@@ -318,18 +318,22 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
         .frame(egui::Frame::NONE.fill(t.title_bar).inner_margin(egui::Margin { left, right: 10, top: 0, bottom: 0 }))
         .show(ui, |ui| {
             let full = ui.max_rect();
-            // Drag the window by the title bar (integrated title bar on macOS).
-            let drag = ui.interact(full, ui.scope_id().with("title_drag"), Sense::click_and_drag());
-            if drag.drag_started() {
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
-            }
-            // Elsewhere the system's own title bar above this one moves the window.
-            if mac {
-                note_title_drag(ui.ctx(), full);
-            }
-            if drag.double_clicked() {
-                let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
-                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
+            // Drag the window by the title bar (desktop only; on iOS an overlay drag hitbox competes
+            // with tapping the document title to rename).
+            #[cfg(not(target_os = "ios"))]
+            {
+                let drag = ui.interact(full, ui.scope_id().with("title_drag"), Sense::click_and_drag());
+                if drag.drag_started() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
+                // Elsewhere the system's own title bar above this one moves the window.
+                if mac {
+                    note_title_drag(ui.ctx(), full);
+                }
+                if drag.double_clicked() {
+                    let max = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!max));
+                }
             }
             // The free stretch between the two clusters, for the centred title. Right to left the
             // clusters swap sides: AutoSave and the Quick Access Toolbar start at the right.
@@ -416,13 +420,15 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                             }
                             ui.add_space(8.0);
                         }
-                        search_box(app, ui, control_h);
+                        let search_w = if cfg!(target_os = "ios") && full.width() < 1050.0 { 150.0 } else { SEARCH_BOX_W };
+                        search_box(app, ui, control_h, search_w);
                         right_start = if rtl { ui.min_rect().max.x } else { ui.min_rect().min.x };
                     });
                 })
             });
             let (qat_end, right_start) = if rtl { (right_start, qat_end) } else { (qat_end, right_start) };
-            // Centred title.
+            // Centred title. On narrow screens (e.g. iPad portrait), fall back to centering within
+            // the free gap between the left and right clusters so the title stays visible and tappable.
             let title = if !app.has_document() {
                 // No document open (#1129): the app's name alone.
                 "WordCraft".to_string()
@@ -441,8 +447,7 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
             };
             let font = TypeRung::Chrome.semibold();
             let track = TypeRung::Chrome.tracking();
-            let cx = full.center().x;
-            let available = 2.0 * (cx - qat_end - 10.0).min(right_start - 10.0 - cx);
+            let (title_cx, available) = title_bar_slot(full.center().x, qat_end, right_start);
             let mut shown: String = title.chars().take(240).collect();
             if text_width(ui.painter(), &shown, &font, track, t.text) > available {
                 while !shown.is_empty() && text_width(ui.painter(), &format!("{shown}…"), &font, track, t.text) > available {
@@ -452,16 +457,31 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
             }
             let w = text_width(ui.painter(), &shown, &font, track, t.text);
             if available > 24.0 {
-                let rect = Rect::from_center_size(pos2(cx, full.center().y), vec2(w + 8.0, control_h));
-                let response = ui.interact(rect, ui.scope_id().with("document_name"), Sense::click()).on_hover_text(tl!("Rename Document"));
+                let hit_size = if cfg!(target_os = "ios") {
+                    vec2((w + 16.0).max(72.0).min(available), (control_h + 6.0).min(full.height()))
+                } else {
+                    vec2(w + 8.0, control_h)
+                };
+                let rect = Rect::from_center_size(pos2(title_cx, full.center().y), hit_size);
+                let response = ui
+                    .interact(rect, ui.scope_id().with("document_name"), Sense::click())
+                    .on_hover_text(tl!("Rename Document"))
+                    .on_hover_cursor(egui::CursorIcon::PointingHand);
                 response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, &title));
-                if response.clicked() {
-                    let _ = app.run("file.rename", json!({}));
+                if app.has_document() {
+                    if response.is_pointer_button_down_on() {
+                        ui.painter().rect_filled(rect, 5.0, t.pressed);
+                    } else if response.hovered() {
+                        ui.painter().rect_filled(rect, 5.0, t.hover);
+                    }
+                    if response.clicked() {
+                        let _ = app.run("file.rename", json!({}));
+                    }
                 }
 
                 paint_text(
                     ui.painter(),
-                    pos2(cx - w / 2.0, full.center().y - TypeRung::Chrome.line_height() / 2.0),
+                    pos2(title_cx - w / 2.0, full.center().y - TypeRung::Chrome.line_height() / 2.0),
                     Align2::LEFT_TOP,
                     &shown,
                     &font,
@@ -470,6 +490,20 @@ pub fn title_bar(app: &mut WordApp, ui: &mut Ui) {
                 );
             }
         });
+}
+
+/// Computes `(center_x, available_width)` for the title bar document name.
+/// Prefers window-centered placement; when that leaves less than `120pt` (such as iPad portrait),
+/// centers inside the actual free gap between the left and right toolbar clusters.
+fn title_bar_slot(window_cx: f32, qat_end: f32, right_start: f32) -> (f32, f32) {
+    let sym = 2.0 * (window_cx - qat_end - 10.0).min(right_start - 10.0 - window_cx);
+    if sym >= 120.0 {
+        return (window_cx, sym);
+    }
+    let gap_left = qat_end + 8.0;
+    let gap_right = right_start - 8.0;
+    let gap = (gap_right - gap_left).max(0.0);
+    if gap > sym { ((gap_left + gap_right) * 0.5, gap) } else { (window_cx, sym) }
 }
 
 /// The title bar's Search box while it is typed in (#5398): the query, whether the text of the
@@ -532,7 +566,7 @@ pub(crate) fn title_search_open(app: &WordApp, ctx: &egui::Context) -> bool {
 
 /// The Search box being typed in: a text box in its place and the results under it. `false`
 /// once it closes: a command or the find ran, Escape, or a click outside both.
-fn typing_search(app: &mut WordApp, ui: &mut Ui, control_h: f32, s: &mut TitleSearch) -> bool {
+fn typing_search(app: &mut WordApp, ui: &mut Ui, control_h: f32, box_w: f32, s: &mut TitleSearch) -> bool {
     if s.swallow {
         ui.ctx().input_mut(|i| i.events.retain(|e| !crate::dialogs::swallow_shortcut_text(&mut s.swallow, e)));
     }
@@ -552,7 +586,7 @@ fn typing_search(app: &mut WordApp, ui: &mut Ui, control_h: f32, s: &mut TitleSe
     }
     let typing = ui.memory(|m| m.has_focus(id));
     let edit = ui.add_sized(
-        vec2(SEARCH_BOX_W, control_h),
+        vec2(box_w, control_h),
         egui::TextEdit::singleline(&mut s.query).id(id).hint_text(ph).align(if crate::rtl::on() {
             Align2::RIGHT_CENTER
         } else {
@@ -596,12 +630,12 @@ fn typing_search(app: &mut WordApp, ui: &mut Ui, control_h: f32, s: &mut TitleSe
 
 /// Search ("Tell me"): a box that opens command search. In the title bar, and in the Commands bar
 /// of Full Screen (#1678). Clicked (or Alt+Q), it takes the typing in place (#5398).
-fn search_box(app: &mut WordApp, ui: &mut Ui, control_h: f32) {
+fn search_box(app: &mut WordApp, ui: &mut Ui, control_h: f32, box_w: f32) {
     let frame = ui.ctx().cumulative_frame_nr();
     ui.ctx().data_mut(|d| d.insert_temp(app.window_id("title_search_shown"), frame));
     let id = app.window_id("title_search");
     if let Some(mut s) = ui.ctx().data(|d| d.get_temp::<TitleSearch>(id)) {
-        let open = typing_search(app, ui, control_h, &mut s);
+        let open = typing_search(app, ui, control_h, box_w, &mut s);
         ui.ctx().data_mut(|d| {
             if open {
                 d.insert_temp(id, s);
@@ -613,7 +647,7 @@ fn search_box(app: &mut WordApp, ui: &mut Ui, control_h: f32) {
     }
     let t = Tokens::get(ui.ctx());
     let rtl = crate::rtl::on();
-    let (r, resp) = ui.allocate_exact_size(vec2(SEARCH_BOX_W, control_h), Sense::click());
+    let (r, resp) = ui.allocate_exact_size(vec2(box_w, control_h), Sense::click());
     let ph = tl!("Search commands and help");
     resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, ph));
     ui.painter().rect(r, 6.0, if resp.hovered() { t.input } else { t.ribbon }, Stroke::new(1.0, t.border), egui::StrokeKind::Inside);
@@ -626,7 +660,9 @@ fn search_box(app: &mut WordApp, ui: &mut Ui, control_h: f32) {
     );
     let pfont = TypeRung::Control.regular();
     let ptrack = TypeRung::Control.tracking();
-    paint_text(ui.painter(), pos2(crate::rtl::lead_x(rtl, r, 30.0), r.center().y), crate::rtl::lead_center(rtl), ph, &pfont, ptrack, t.text_dim);
+    let shown_ph = if box_w < 190.0 { tl!("Search") } else { ph };
+    let clip = ui.painter().with_clip_rect(r.shrink2(vec2(6.0, 0.0)));
+    paint_text(&clip, pos2(crate::rtl::lead_x(rtl, r, 30.0), r.center().y), crate::rtl::lead_center(rtl), shown_ph, &pfont, ptrack, t.text_dim);
     if app.ui.keytips == crate::keytips::Phase::Tabs {
         app.keytip_rects.push((r, crate::keytips::SEARCH_LETTER.to_string()));
     }
@@ -676,27 +712,70 @@ pub const FOCUS_CANVAS: egui::Color32 = egui::Color32::BLACK;
 /// Height of the slim bar Focus and Full Screen View show in place of the chrome (#1678).
 pub const SCREEN_BAR_HEIGHT: f32 = 30.0;
 
+fn screen_bar_height() -> f32 {
+    if cfg!(target_os = "ios") { 36.0 } else { SCREEN_BAR_HEIGHT }
+}
+
 /// The slim bar across the top in Focus ("⋯" drops the ribbon down over the page) and Full
-/// Screen View (Search, which finds and runs any command).
+/// Screen View (Search, which finds and runs any command), with an explicit Exit button on the
+/// right so touch devices without an Escape key can always leave Focus / Full Screen.
 pub fn screen_bar(app: &mut WordApp, ui: &mut Ui, screen: Screen) {
     let t = Tokens::get(ui.ctx());
     let fill = if screen == Screen::Focus { FOCUS_CANVAS } else { t.title_bar };
-    egui::Panel::top("screen_bar").exact_size(SCREEN_BAR_HEIGHT).show_separator_line(false).frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
+    let bar_h = screen_bar_height();
+    egui::Panel::top("screen_bar").exact_size(bar_h).show_separator_line(false).frame(egui::Frame::NONE.fill(fill)).show(ui, |ui| {
         let full = ui.max_rect();
         if screen == Screen::Focus {
-            let r = Rect::from_center_size(full.center(), vec2(40.0, 20.0));
+            let btn_size = if cfg!(target_os = "ios") { vec2(52.0, 26.0) } else { vec2(40.0, 20.0) };
+            let r = Rect::from_center_size(full.center(), btn_size);
             let resp = ui.allocate_rect(r, Sense::click());
             let shade = if resp.hovered() || app.focus_ribbon { egui::Color32::from_gray(70) } else { egui::Color32::from_gray(40) };
-            ui.painter().rect_filled(r, 4.0, shade);
+            ui.painter().rect_filled(r, 6.0, shade);
             icons::paint(ui.painter(), Rect::from_center_size(r.center(), vec2(14.0, 14.0)), "more", egui::Color32::from_gray(220), t.accent);
             resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, tl!("Show the ribbon")));
             if resp.on_hover_text(tl!("Show the ribbon")).clicked() {
                 let _ = app.run("ui.focusRibbon", json!({}));
             }
         } else {
-            ui.scope_builder(egui::UiBuilder::new().max_rect(Rect::from_center_size(full.center(), vec2(260.0, 22.0))), |ui| {
-                search_box(app, ui, 22.0);
+            let box_w = if cfg!(target_os = "ios") { 200.0_f32.min((full.width() - 220.0).max(120.0)) } else { SEARCH_BOX_W };
+            ui.scope_builder(egui::UiBuilder::new().max_rect(Rect::from_center_size(full.center(), vec2(box_w, 22.0))), |ui| {
+                search_box(app, ui, 22.0, box_w);
             });
+        }
+        if let Some(cmd) = screen.exit_command() {
+            let exit_label = if screen == Screen::Focus { "✕ 退出专注" } else { "✕ 退出全屏" };
+            let font = TypeRung::Control.semibold();
+            let track = TypeRung::Control.tracking();
+            let fg = if screen == Screen::Focus { egui::Color32::from_gray(235) } else { t.text };
+            let text_w = text_width(ui.painter(), exit_label, &font, track, fg);
+            let btn_w = (text_w + 22.0).max(88.0);
+            let btn_h = if cfg!(target_os = "ios") { 26.0 } else { 22.0 };
+            let exit_rect = Rect::from_center_size(pos2(full.max.x - 12.0 - btn_w * 0.5, full.center().y), vec2(btn_w, btn_h));
+            let exit_resp = ui
+                .interact(exit_rect, ui.scope_id().with("exit_screen_mode"), Sense::click())
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
+            let bg = if screen == Screen::Focus {
+                if exit_resp.is_pointer_button_down_on() {
+                    egui::Color32::from_gray(95)
+                } else if exit_resp.hovered() {
+                    egui::Color32::from_gray(72)
+                } else {
+                    egui::Color32::from_gray(46)
+                }
+            } else if exit_resp.is_pointer_button_down_on() {
+                t.pressed
+            } else if exit_resp.hovered() {
+                t.hover
+            } else {
+                t.ribbon
+            };
+            ui.painter().rect_filled(exit_rect, 6.0, bg);
+            paint_text(ui.painter(), exit_rect.center(), Align2::CENTER_CENTER, exit_label, &font, track, fg);
+            exit_resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, exit_label));
+            if exit_resp.clicked() {
+                app.focus_ribbon = false;
+                let _ = app.run(cmd, json!({}));
+            }
         }
     });
 }
@@ -705,7 +784,8 @@ pub fn screen_bar(app: &mut WordApp, ui: &mut Ui, screen: Screen) {
 /// click on the page puts it away; Focus stays on.
 pub fn focus_ribbon(app: &mut WordApp, ctx: &egui::Context) {
     let width = ctx.content_rect().width();
-    egui::Area::new(egui::Id::unique("focus_ribbon")).fixed_pos(pos2(0.0, SCREEN_BAR_HEIGHT)).order(egui::Order::Middle).show(ctx, |ui| {
+    let safe_top = if cfg!(target_os = "ios") { ctx.input(|i| i.safe_area_insets()).0.top } else { 0.0 };
+    egui::Area::new(egui::Id::unique("focus_ribbon")).fixed_pos(pos2(0.0, safe_top + screen_bar_height())).order(egui::Order::Middle).show(ctx, |ui| {
         ui.set_width(width);
         ui.set_max_width(width);
         crate::ribbon::show(app, ui);

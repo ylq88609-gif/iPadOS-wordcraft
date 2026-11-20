@@ -495,8 +495,9 @@ impl FontDb {
         let mut new = Vec::new();
         for f in found {
             let label = format!("{} {}", f.family, f.style);
-            let face = make_face(FontBytes::Owned(data.clone()), f.index, f.family, f.style, f.legacy, f.coords)
+            let mut face = make_face(FontBytes::Owned(data.clone()), f.index, f.family, f.style, f.legacy, f.coords)
                 .ok_or_else(|| UserFontError::Unusable(format!("{label} doesn't parse")))?;
+            face.local_names = f.local;
             if face.skrifa().is_none_or(|s| s.charmap().mappings().next().is_none()) {
                 return Err(UserFontError::Unusable(format!("{label} maps no characters")));
             }
@@ -538,6 +539,7 @@ impl FontDb {
     /// Forget cached fallback choices and tell watchers ([`FontDb::generation`]).
     fn fonts_changed(&self) {
         self.fallbacks.write().unwrap_or_else(|e| e.into_inner()).map.clear();
+        self.run_fallbacks.write().unwrap_or_else(|e| e.into_inner()).map.clear();
         self.generation.fetch_add(1, Ordering::AcqRel);
     }
 

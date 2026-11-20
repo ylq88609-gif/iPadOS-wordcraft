@@ -499,7 +499,15 @@ impl Default for StyleSheet {
 /// The default heading colour.
 pub const HEADING_BLUE: Rgb = Rgb(0x0F, 0x47, 0x61);
 /// Default body/heading fonts (theme minor/major). Substituted by layout when not installed.
+/// On iOS, default both Latin/digits and CJK to Noto Sans CJK SC so digits, letters and Chinese
+/// characters share one unified font face and consistent visual metrics across every document.
+#[cfg(target_os = "ios")]
+pub const BODY_FONT: &str = "Noto Sans CJK SC";
+#[cfg(not(target_os = "ios"))]
 pub const BODY_FONT: &str = "Aptos";
+#[cfg(target_os = "ios")]
+pub const HEADING_FONT: &str = "Noto Sans CJK SC";
+#[cfg(not(target_os = "ios"))]
 pub const HEADING_FONT: &str = "Aptos Display";
 
 fn chr() -> CharProps {
@@ -526,7 +534,13 @@ impl StyleSheet {
     /// The built-in style set used for new documents.
     pub fn builtin() -> Self {
         let mut s = StyleSheet {
-            default_chr: CharProps { font: Some(BODY_FONT.into()), size: Some(12.0), kern: Some(1.0), lang: Some("en-US".into()), ..chr() },
+            default_chr: CharProps {
+                font: Some(BODY_FONT.into()),
+                size: Some(12.0),
+                kern: Some(1.0),
+                lang: Some("en-US".into()),
+                ..chr()
+            },
             default_para: ParaProps {
                 space_after: Some(8.0),
                 space_before: Some(0.0),

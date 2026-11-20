@@ -247,7 +247,12 @@ pub fn contributors_ui(ui: &mut egui::Ui) {
         tl!("{contributors} contributors · {commits} commits"),
         &[("contributors", &list.len().to_string()), ("commits", &group(TOTAL_COMMITS))],
     );
-    ui.label(RichText::new(summary).small().weak());
+    ui.horizontal_wrapped(|ui| {
+        ui.label(RichText::new("iPadOS 移植 / iPadOS Port:").strong().small());
+        ui.hyperlink_to("@ylq88609-gif", "https://github.com/ylq88609-gif");
+        ui.label(RichText::new("·").weak());
+        ui.label(RichText::new(summary).small().weak());
+    });
     ui.separator();
     crate::rtl::island(ui, |ui| {
         if list.is_empty() {

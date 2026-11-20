@@ -229,15 +229,44 @@ pub(super) const RUN_FALLBACK_CACHE_MAX: usize = 4096;
 
 pub(super) const RUN_FALLBACK_CACHE_CHARS: usize = 1 << 20;
 
+/// Families preferred for East Asian (CJK) characters when no explicit East Asian font is set:
+/// prioritize complete Simplified Chinese open-source & system faces so a Chinese line never mixes
+/// Korean (`Apple SD Gothic Neo`) or Japanese (`Noto Sans CJK JP`) faces with Simplified Chinese.
+pub(super) const CJK_FALLBACKS: &[&str] = &[
+    "Noto Sans CJK SC",
+    "Source Han Sans SC",
+    "Noto Sans SC",
+    "PingFang SC",
+    "Noto Serif CJK SC",
+    "Source Han Serif SC",
+    "Noto Serif SC",
+    "Songti SC",
+    "Heiti SC",
+    "STHeiti",
+    "Microsoft YaHei",
+    "Noto Sans CJK JP",
+    "Noto Serif CJK JP",
+    "Hiragino Sans",
+    "Apple SD Gothic Neo",
+];
+
 /// Loaded faces other than `exclude`, in fallback order: for right-to-left text the fonts made
-/// for the script first (so a word isn't split across fonts, which breaks Arabic joining); for a
-/// complex-script character `complex` (Thai, Myanmar…) faces with OpenType layout tables, the
-/// script's own families first, as the per-character fallback ranks them; then the fallback
+/// for the script first (so a word isn't split across fonts, which breaks Arabic joining); for
+/// CJK text complete Simplified Chinese faces first so a line never mixes mismatched CJK faces;
+/// for a complex-script character `complex` (Thai, Myanmar…) faces with OpenType layout tables,
+/// the script's own families first, as the per-character fallback ranks them; then the fallback
 /// family, upright, nearest to regular weight.
-pub(super) fn fallback_order(faces: &[Arc<FontFace>], exclude: u32, rtl: bool, complex: Option<char>) -> Vec<&Arc<FontFace>> {
+pub(super) fn fallback_order(faces: &[Arc<FontFace>], exclude: u32, rtl: bool, cjk: bool, complex: Option<char>) -> Vec<&Arc<FontFace>> {
     let mut order: Vec<&Arc<FontFace>> = faces.iter().filter(|f| f.id != exclude).collect();
-    let rank =
-        |f: &FontFace| if rtl { RTL_FALLBACKS.iter().position(|n| f.family.eq_ignore_ascii_case(n)).unwrap_or(RTL_FALLBACKS.len()) } else { 0 };
+    let rank = |f: &FontFace| {
+        if rtl {
+            RTL_FALLBACKS.iter().position(|n| f.family.eq_ignore_ascii_case(n)).unwrap_or(RTL_FALLBACKS.len())
+        } else if cjk {
+            CJK_FALLBACKS.iter().position(|n| f.family.eq_ignore_ascii_case(n)).unwrap_or(CJK_FALLBACKS.len())
+        } else {
+            0
+        }
+    };
     let shaping = |f: &FontFace| match complex {
         Some(c) => (!f.has_layout_tables(), crate::fallback_rank(c, &f.family)),
         None => (false, 0),

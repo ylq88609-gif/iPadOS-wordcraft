@@ -901,7 +901,7 @@ fn visuals(t: &Tokens) -> Visuals {
     // there, so the interface looked semi-bold. Plain coverage (Firefox's weight) left the thin
     // light strokes on the darkest strips (the tab row) looking soft; a light boost, about 7 %
     // more ink, was chosen side by side on a 145 % desktop.
-    if t.dark && cfg!(all(unix, not(target_os = "macos"))) {
+    if t.dark && cfg!(all(unix, not(any(target_os = "macos", target_os = "ios")))) {
         v.text_options.color_transfer_function = egui::epaint::FontColorTransferFunction::Gamma(DARK_TEXT_GAMMA);
     }
     v.panel_fill = t.ribbon;

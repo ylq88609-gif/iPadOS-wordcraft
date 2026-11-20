@@ -508,4 +508,37 @@ impl WordApp {
         // The synthetic step this frame took is done even when drawing ended early.
         self.flush_shot_and_synthetic(&ctx);
     }
+
+    /// Returns the canvas region where an iPadOS 1-finger touch pan should scroll the document
+    /// rather than drag a UI control, scrollbar, dialog, popup, or selected drawing/table handle.
+    pub fn ios_touch_scroll_rect(&self, ctx: &egui::Context) -> Option<egui::Rect> {
+        let blocked = self.ui.backstage
+            || self.dialog.is_some()
+            || self.canvas.context_menu_open
+            || egui::Popup::is_any_open(ctx)
+            || self.canvas.obj_drag.is_some()
+            || self.canvas.crop_drag.is_some()
+            || self.canvas.table_resize.is_some()
+            || self.canvas.table_drag.is_some()
+            || self.canvas.table_tool.is_some()
+            || self.canvas.ink.is_some()
+            || self.canvas.erasing.is_some()
+            || crate::ink::cursor(self).is_some()
+            || self.canvas.unit_drag_active()
+            || self.canvas.scrollbar_page.is_some();
+        if blocked {
+            return None;
+        }
+        self.canvas.viewport
+    }
+
+    /// Cancels a nascent 1-finger text drag-select when iPadOS touch scrolling or long-press
+    /// takes over. When `collapse_selection` is true, also collapses an accidental drag highlight
+    /// back to the press caret.
+    pub fn ios_abort_touch_drag(&mut self, collapse_selection: bool) {
+        let was_dragging = self.canvas.abort_pointer_drag();
+        if collapse_selection && was_dragging && self.session.sel.anchor != self.session.sel.focus {
+            self.session.sel.focus = self.session.sel.anchor.clone();
+        }
+    }
 }

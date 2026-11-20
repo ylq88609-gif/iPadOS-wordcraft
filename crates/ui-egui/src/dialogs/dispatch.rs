@@ -72,7 +72,8 @@ fn rename_document_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> boo
         return false;
     };
     let label = ui.label(tl!("Document name"));
-    let r = ui.add(egui::TextEdit::singleline(name).desired_width(320.0).char_limit(200)).labelled_by(label.id);
+    let field_w = 320.0_f32.min((ui.ctx().content_rect().width() - 80.0).max(200.0));
+    let r = ui.add(egui::TextEdit::singleline(name).desired_width(field_w).char_limit(200)).labelled_by(label.id);
     if *focus {
         r.request_focus();
         *focus = false;
@@ -80,14 +81,16 @@ fn rename_document_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> boo
     if !message.is_empty() {
         ui.colored_label(ui.visuals().error_fg_color, message.as_str());
     }
+    let enter = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
     let (ok, cancel) = buttons(ui, tl!("Rename"));
+    let confirm = ok || enter;
     if cancel {
         return true;
     }
-    if ok && name.trim() == app.title_stem() {
+    if confirm && name.trim() == app.title_stem() {
         return true;
     }
-    if ok {
+    if confirm {
         match app.run("file.rename", json!({"name": name})) {
             Ok(_) => return true,
             Err(e) => *message = e,
@@ -806,7 +809,17 @@ fn link_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
             }
             let _ = app.run("insert.link", params);
         } else {
-            let _ = app.run("insert.link", json!({"url": url, "text": text}));
+            let trimmed = url.trim();
+            let normalized = if trimmed.is_empty()
+                || trimmed.starts_with('#')
+                || trimmed.contains("://")
+                || trimmed.to_ascii_lowercase().starts_with("mailto:")
+            {
+                trimmed.to_string()
+            } else {
+                format!("https://{trimmed}")
+            };
+            let _ = app.run("insert.link", json!({"url": normalized, "text": text}));
         }
     }
     ok || cancel
@@ -1166,7 +1179,7 @@ fn about_dialog(ui: &mut Ui, d: &mut Dialog) -> bool {
     let Dialog::About { tab } = d else {
         return false;
     };
-    ui.set_width(820.0);
+    ui.set_width(820.0_f32.min((ui.ctx().content_rect().width() - 48.0).max(320.0)));
     let names = [tl!("About").to_string(), tl!("Contributors").to_string(), tl!("Models").to_string(), tl!("Language data").to_string()];
     if let Some(i) = crate::widgets::dialog_tabs(ui, &names, *tab as usize) {
         *tab = i as u8;
@@ -1185,6 +1198,15 @@ fn about_dialog(ui: &mut Ui, d: &mut Dialog) -> bool {
             ui.hyperlink_to(tl!("getartcraft.com/apps/wordcraft"), "https://getartcraft.com/apps/wordcraft");
             ui.hyperlink_to(tl!("Join us on Discord: discord.gg/artcraft"), "https://discord.gg/artcraft");
             ui.hyperlink_to(tl!("Source code: github.com/storytold/wordcraft"), "https://github.com/storytold/wordcraft");
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new("iPadOS 移植版 / iPadOS Port").font(semibold(13.5)));
+            ui.horizontal_wrapped(|ui| {
+                ui.label("iPadOS 移植贡献者 / Ported by:");
+                ui.hyperlink_to("@ylq88609-gif", "https://github.com/ylq88609-gif");
+            });
+            ui.hyperlink_to("iPadOS Port Repository: github.com/ylq88609-gif/iPadOS-wordcraft", "https://github.com/ylq88609-gif/iPadOS-wordcraft");
             ui.add_space(6.0);
             ui.label(egui::RichText::new(tl!("MIT OR Apache-2.0. Copyright (c) 2026 ArtCraft Team and the WordCraft contributors.")).small().weak());
         }

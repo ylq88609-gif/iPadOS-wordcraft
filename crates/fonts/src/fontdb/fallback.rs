@@ -1,7 +1,9 @@
 use super::face::{FALLBACK_FAMILY, FontFace};
 #[cfg(not(target_arch = "wasm32"))]
 use super::fallback_data::{CoverageIndex, IndexedFile, SYS_MISSES_MAX, SYSTEM_FALLBACKS, coverage_ranges, ranges_hold, read_fallback_file};
-use super::fallback_data::{FALLBACK_CACHE_MAX, RTL_FALLBACKS, RUN_FALLBACK_CACHE_CHARS, RUN_FALLBACK_CACHE_MAX, arabic_block, fallback_order};
+use super::fallback_data::{
+    CJK_FALLBACKS, FALLBACK_CACHE_MAX, RTL_FALLBACKS, RUN_FALLBACK_CACHE_CHARS, RUN_FALLBACK_CACHE_MAX, arabic_block, fallback_order,
+};
 use super::{Arc, FontDb};
 #[cfg(not(target_arch = "wasm32"))]
 use super::{HashMap, Ordering};
@@ -116,6 +118,8 @@ impl FontDb {
         let rank = |f: &FontFace| {
             if crate::is_rtl(c) || arabic_block(c) {
                 RTL_FALLBACKS.iter().position(|n| f.family.eq_ignore_ascii_case(n)).unwrap_or(RTL_FALLBACKS.len())
+            } else if crate::is_cjk(c) {
+                CJK_FALLBACKS.iter().position(|n| f.family.eq_ignore_ascii_case(n)).unwrap_or(CJK_FALLBACKS.len())
             } else if crate::is_emoji(c) {
                 crate::fallback_rank(c, &f.family)
             } else {
@@ -227,10 +231,11 @@ impl FontDb {
     fn loaded_covering(&self, chars: &[char], exclude: u32) -> (Option<Arc<FontFace>>, usize) {
         let faces = self.read_faces();
         let rtl = chars.iter().any(|c| crate::is_rtl(*c) || arabic_block(*c));
+        let cjk = chars.iter().any(|c| crate::is_cjk(*c));
         // A complex-script character picks the families its script prefers (the lowest one: the
         // run's characters come sorted).
         let complex = chars.iter().copied().find(|c| crate::needs_layout_tables(*c));
-        let found = fallback_order(&faces, exclude, rtl, complex).into_iter().find(|f| chars.iter().all(|c| f.covers(*c))).cloned();
+        let found = fallback_order(&faces, exclude, rtl, cjk, complex).into_iter().find(|f| chars.iter().all(|c| f.covers(*c))).cloned();
         (found, faces.len())
     }
 

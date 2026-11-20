@@ -122,6 +122,12 @@ pub(super) fn context_menu(app: &mut WordApp, ui: &mut Ui) {
     }
     item(ui, app, "Font…", "ui.dialog", json!({"name": "font"}));
     item(ui, app, "Paragraph…", "ui.dialog", json!({"name": "paragraph"}));
+    if let Some(link) = caret_hyperlink(app) {
+        if ui.add(crate::rtl::menu_item(ui, "打开超链接 / Open Hyperlink", "", 0.0)).clicked() {
+            crate::canvas::follow_link(app, link);
+            ui.close();
+        }
+    }
     item(ui, app, "Link…", "ui.dialog", json!({"name": "link"}));
     item(ui, app, "New Comment", "review.newComment", json!({}));
     if !wordcraft_engine::cmd::fields::selected(&app.session).is_empty() {
@@ -218,6 +224,15 @@ enum TablePick {
     Rows,
     Columns,
     Table,
+}
+
+fn caret_hyperlink(app: &WordApp) -> Option<String> {
+    let pos = &app.session.sel.focus;
+    let para = app.session.doc.para_at(pos)?;
+    [Some(pos.off), (pos.off > 0).then(|| para.prev_boundary(pos.off))]
+        .into_iter()
+        .flatten()
+        .find_map(|off| para.props_of_char(off).link.clone().filter(|l| !l.is_empty()))
 }
 
 fn table_pick(s: &wordcraft_engine::Session) -> TablePick {

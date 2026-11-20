@@ -48,6 +48,21 @@ impl CanvasState {
     pub fn drag_selecting(&self) -> bool {
         self.dragging
     }
+
+    /// True while a double-/triple-click unit drag selection is active.
+    pub fn unit_drag_active(&self) -> bool {
+        self.unit_drag.is_some()
+    }
+
+    /// Aborts any active pointer drag-selection (used on iPadOS when a 1-finger touch scroll
+    /// or long-press gesture takes over from an initial touch down).
+    pub fn abort_pointer_drag(&mut self) -> bool {
+        let was_dragging = self.dragging;
+        self.dragging = false;
+        self.column_drag = None;
+        self.unit_drag = None;
+        was_dragging
+    }
 }
 
 /// Whether wheel input counts as being over the canvas. Another widget's drag (a scrollbar, say)
@@ -402,6 +417,26 @@ fn handle_completed_click(app: &mut WordApp, pointer: &PagePointer<'_>) -> bool 
         apply_format_painter(app);
         return true;
     }
+    // On iOS/iPadOS, a clean single tap on a hyperlink opens it directly in the system browser
+    // (or jumps to its bookmark) without requiring a hardware ⌘/Ctrl modifier key; dragging or
+    // scrolling starting over a link never triggers `resp.clicked()`.
+    #[cfg(target_os = "ios")]
+    if resp.clicked()
+        && !resp.double_clicked()
+        && !resp.triple_clicked()
+        && app.session.sel.is_collapsed()
+        && !pointer.ui.input(|i| i.modifiers.command || i.modifiers.shift || i.modifiers.alt)
+    {
+        let hit_link = crate::objects::link_at(app, layout, pointer.rects, pointer.scale, pointer.p)
+            .or_else(|| layout.hit(page, x, y, story).and_then(|pos| link_under(app, layout, page, x, y, &pos)));
+        if let Some(link) = hit_link {
+            app.canvas.dragging = false;
+            app.canvas.column_drag = None;
+            app.canvas.unit_drag = None;
+            follow_link(app, link);
+            return true;
+        }
+    }
     // Double-click in the header/footer area edits it (creating it when the page has none, #960);
     // double-click in the body leaves it. Print Layout only: the other views show no margins.
     let hf_zone = if app.session.view.mode == wordcraft_layout::ViewMode::Print && !app.session.view.read_mode {
@@ -488,9 +523,13 @@ fn show_hover_link(app: &WordApp, pointer: &PagePointer<'_>) {
         && let Some(link) = crate::objects::link_at(app, layout, rects, *scale, *p)
             .or_else(|| layout.hit(*page, *x, *y, *story).and_then(|pos| link_under(app, layout, *page, *x, *y, &pos)))
     {
-        let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
         let target = if is_generated_bookmark_link(&link) { tl!("Current Document").to_string() } else { link };
-        let tip = format!("{target}\n{}", crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]));
+        let tip = if cfg!(target_os = "ios") {
+            format!("{target}\n轻点打开链接 / Tap to open")
+        } else {
+            let key = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl" };
+            format!("{target}\n{}", crate::i18n::fmt(tl!("{key}+Click to follow link"), &[("key", key)]))
+        };
         egui::Tooltip::always_open(ui.ctx().clone(), ui.layer_id(), egui::Id::unique("link_tip"), egui::PopupAnchor::Pointer).show(|ui| {
             ui.label(tip);
         });

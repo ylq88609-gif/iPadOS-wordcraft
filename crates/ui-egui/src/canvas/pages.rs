@@ -280,8 +280,8 @@ pub(super) fn page_render_options(app: &WordApp, dim_body: bool) -> wordcraft_re
 /// look semi-bold).
 pub(crate) fn screen_render_options() -> wordcraft_render::RenderOptions {
     wordcraft_render::RenderOptions {
-        text_darkening: cfg!(target_os = "macos"),
-        hinting: cfg!(all(unix, not(target_os = "macos"))),
+        text_darkening: cfg!(any(target_os = "macos", target_os = "ios")),
+        hinting: cfg!(all(unix, not(any(target_os = "macos", target_os = "ios")))),
         ..Default::default()
     }
 }

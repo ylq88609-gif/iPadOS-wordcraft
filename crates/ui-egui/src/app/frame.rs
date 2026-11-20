@@ -80,9 +80,53 @@ impl WordApp {
         let window = self.windows.shown();
         let moved = |app: &WordApp| app.windows.shown() != window;
         #[cfg(target_os = "ios")]
-        egui::Panel::top("ios_safe_area_top").exact_size(24.0).frame(egui::Frame::NONE.fill(t.tab_strip)).show(ui, |_| {});
-        #[cfg(target_os = "ios")]
-        egui::Panel::bottom("ios_safe_area_bottom").exact_size(16.0).frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
+        {
+            let insets = ctx.input(|i| i.safe_area_insets()).0;
+            let focus = !self.ui.backstage && self.has_document() && chrome::Screen::of(&self.session.view) == chrome::Screen::Focus;
+            let top_fill = if focus {
+                chrome::FOCUS_CANVAS
+            } else if self.ui.backstage {
+                t.panel
+            } else {
+                t.title_bar
+            };
+            let bottom_fill = if focus {
+                chrome::FOCUS_CANVAS
+            } else if self.ui.backstage {
+                t.panel
+            } else {
+                t.status_bar
+            };
+            let side_fill = if focus { chrome::FOCUS_CANVAS } else { t.canvas };
+            if insets.top > 0.0 {
+                egui::Panel::top("ios_safe_area_top")
+                    .exact_size(insets.top)
+                    .show_separator_line(false)
+                    .frame(egui::Frame::NONE.fill(top_fill))
+                    .show(ui, |_| {});
+            }
+            if insets.bottom > 0.0 {
+                egui::Panel::bottom("ios_safe_area_bottom")
+                    .exact_size(insets.bottom)
+                    .show_separator_line(false)
+                    .frame(egui::Frame::NONE.fill(bottom_fill))
+                    .show(ui, |_| {});
+            }
+            if insets.left > 0.0 {
+                egui::Panel::left("ios_safe_area_left")
+                    .exact_size(insets.left)
+                    .show_separator_line(false)
+                    .frame(egui::Frame::NONE.fill(side_fill))
+                    .show(ui, |_| {});
+            }
+            if insets.right > 0.0 {
+                egui::Panel::right("ios_safe_area_right")
+                    .exact_size(insets.right)
+                    .show_separator_line(false)
+                    .frame(egui::Frame::NONE.fill(side_fill))
+                    .show(ui, |_| {});
+            }
+        }
         if self.ui.backstage {
             backstage::show(self, ui);
         } else if !self.has_document() {

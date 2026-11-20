@@ -38,6 +38,9 @@ pub fn has_named_substitutes(family: &str) -> bool {
     substitutes_by_name(charset_base_family(family)).1
 }
 
+#[cfg(target_os = "ios")]
+const SANS: &[&str] = &["Noto Sans CJK SC", "Liberation Sans", "Helvetica Neue", "Arial", "Carlito", "Noto Sans", "DejaVu Sans", "Source Sans 3"];
+#[cfg(not(target_os = "ios"))]
 const SANS: &[&str] = &["Carlito", "Helvetica Neue", "Arial", "Liberation Sans", "Noto Sans", "DejaVu Sans", "Source Sans 3"];
 
 /// [`substitutes`], and whether they were chosen for this family by name.
@@ -318,6 +321,16 @@ pub fn charset_base_family(family: &str) -> &str {
 /// ([`substitute`]), and text drawn in a twin doesn't change the layout ([`metric_compatible`]).
 /// Not macOS Times or Courier: their advance widths differ from Times New Roman's and Courier
 /// New's.
+#[cfg(target_os = "ios")]
+const METRIC_TWINS: &[&[&str]] = &[
+    &["Arial", "Liberation Sans", "Helvetica", "Arimo"],
+    &["Times New Roman", "Liberation Serif", "Tinos"],
+    &["Courier New", "Liberation Mono", "Cousine"],
+    &["Calibri", "Liberation Sans"],
+    &["Cambria", "Caladea"],
+    &["Palatino Linotype", "Palatino", "Book Antiqua", "TeX Gyre Pagella", "P052", "URW Palladio L", "Palladio"],
+];
+#[cfg(not(target_os = "ios"))]
 const METRIC_TWINS: &[&[&str]] = &[
     &["Arial", "Liberation Sans", "Helvetica", "Arimo"],
     &["Times New Roman", "Liberation Serif", "Tinos"],
