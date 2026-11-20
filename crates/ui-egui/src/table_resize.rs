@@ -15,7 +15,7 @@ use crate::WordApp;
 use crate::theme::Tokens;
 
 /// How near (screen pixels) the pointer has to be to a border to grab it.
-pub(crate) const REACH_PX: f32 = 4.0;
+pub(crate) const REACH_PX: f32 = if cfg!(target_os = "ios") { 14.0 } else { 4.0 };
 
 /// A table border (or the handle) being dragged.
 #[derive(Clone, Debug)]

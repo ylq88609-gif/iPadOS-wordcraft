@@ -213,12 +213,34 @@ pub fn system_font_dirs() -> Vec<std::path::PathBuf> {
         return dirs;
     }
     let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-    if cfg!(target_os = "macos") {
+    if cfg!(any(target_os = "macos", target_os = "ios")) {
+        // Bundled open-source fonts packaged inside the app bundle (`WordFonts` / `Fonts`) are
+        // cataloged lazily here so they do not need to be copied into the user font directory or
+        // read eagerly into heap memory on 4 GB RAM iPad devices.
+        if let Some(bundle) = std::env::current_exe().ok().and_then(|p| p.parent().map(std::path::PathBuf::from)) {
+            for sub in ["WordFonts", "Fonts"] {
+                let d = bundle.join(sub);
+                if d.is_dir() {
+                    dirs.push(d);
+                }
+            }
+        }
         dirs.extend(["/System/Library/Fonts", "/Library/Fonts"].map(Into::into));
+        if cfg!(target_os = "ios") {
+            dirs.extend(
+                [
+                    "/System/Library/Fonts/Core",
+                    "/System/Library/Fonts/CoreUI",
+                    "/System/Library/Fonts/CoreAddition",
+                    "/System/Library/Fonts/LanguageSupport",
+                ]
+                .map(Into::into),
+            );
+        }
         if let Some(h) = &home {
             dirs.push(h.join("Library/Fonts"));
         }
-        // Fonts macOS ships as assets (PingFang, Yu Mincho, …): com_apple_MobileAsset_Font<N>
+        // Fonts macOS and iPadOS ship as assets (PingFang, Yu Mincho, …): com_apple_MobileAsset_Font<N>
         // (`Assets` before macOS 11, `AssetsV2` since).
         for parent in ["/System/Library/AssetsV2", "/System/Library/AssetsV2/PreinstalledAssetsV2/InstallWithOs", "/System/Library/Assets"] {
             let Ok(entries) = std::fs::read_dir(parent) else { continue };

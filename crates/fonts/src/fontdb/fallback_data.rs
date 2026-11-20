@@ -147,7 +147,7 @@ pub const RTL_FALLBACKS: &[&str] = &[
     "DejaVu Sans",
 ];
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub const RTL_FALLBACKS: &[&str] = &[
     "Helvetica",
     "Vazirmatn",
@@ -161,7 +161,7 @@ pub const RTL_FALLBACKS: &[&str] = &[
     "DejaVu Sans",
 ];
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
 pub const RTL_FALLBACKS: &[&str] =
     &["Noto Naskh Arabic", "Noto Sans Arabic", "Noto Sans Hebrew", "Vazirmatn", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans"];
 
@@ -173,6 +173,10 @@ pub(super) const SYSTEM_FALLBACKS: &[&str] = &[
     "Segoe UI",
     "Noto Sans",
     "DejaVu Sans",
+    "Source Han Sans SC",
+    "Noto Sans CJK SC",
+    "Source Han Serif SC",
+    "Noto Serif CJK SC",
     "PingFang SC",
     "Hiragino Sans",
     "Hiragino Kaku Gothic ProN",

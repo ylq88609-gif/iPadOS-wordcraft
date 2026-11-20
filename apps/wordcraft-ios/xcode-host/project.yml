@@ -1,0 +1,39 @@
+name: WordCraft
+options:
+  bundleIdPrefix: com.artcraft
+  deploymentTarget:
+    iOS: "16.0"
+targets:
+  WordCraft:
+    type: application
+    platform: iOS
+    sources:
+      - main.m
+      - path: WordFonts
+        type: folder
+    info:
+      path: Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.artcraft.wordcraft.ipad
+        SUPPORTED_PLATFORMS: iphoneos
+        TARGETED_DEVICE_FAMILY: "2"
+        ENABLE_BITCODE: NO
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -ObjC
+          - -lc++
+          - -lresolv
+    dependencies:
+      - sdk: UIKit.framework
+      - sdk: UniformTypeIdentifiers.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreText.framework
+      - sdk: Foundation.framework
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - framework: ../../../target/aarch64-apple-ios/release/libwordcraft_ios.a
+        embed: false

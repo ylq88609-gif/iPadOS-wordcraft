@@ -294,6 +294,12 @@ impl<'a> Builder<'a> {
                 .collect();
             if ea.is_empty() {
                 None
+            } else if let Some((_, r)) = wanted_ea.filter(|(f, r)| {
+                r.substituted
+                    && wordcraft_fonts::word::has_named_substitutes(f)
+                    && ea.iter().all(|c| r.face.covers(*c))
+            }) {
+                Some(r.face)
             } else {
                 wordcraft_fonts::FontDb::global().fallback_for_run(&ea, primary.id(), rc.bold, rc.italic).map(|f| FaceRef::of(&f))
             }

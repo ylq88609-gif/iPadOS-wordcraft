@@ -137,6 +137,8 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                     if let Some(f) = font_box(ui, ("fontdlg_asian", font_ea.as_str()), &fams, &*prev, warning.as_deref()) {
                         if f == crate::widgets::ADD_FONT {
                             let _ = app.run("font.add", json!({}));
+                        } else if f == crate::widgets::MANAGE_FONTS {
+                            let _ = app.run("font.manage", json!({}));
                         } else if f == crate::widgets::LOAD_SYSTEM_FONTS {
                             let _ = app.run("font.loadSystem", json!({}));
                         } else {
@@ -155,6 +157,8 @@ fn font_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 if let Some(f) = font_box(ui, ("fontdlg_font", font.as_str()), &fams, &*prev, warning.as_deref()) {
                     if f == crate::widgets::ADD_FONT {
                         let _ = app.run("font.add", json!({}));
+                    } else if f == crate::widgets::MANAGE_FONTS {
+                        let _ = app.run("font.manage", json!({}));
                     } else if f == crate::widgets::LOAD_SYSTEM_FONTS {
                         let _ = app.run("font.loadSystem", json!({}));
                     } else {
@@ -1000,6 +1004,8 @@ fn modify_style_dialog(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
                 if let Some(f) = crate::widgets::font_combo(ui, "ms_font", 220.0, &shown, &fams, Some(&*prev)) {
                     if f == crate::widgets::ADD_FONT {
                         let _ = app.run("font.add", json!({}));
+                    } else if f == crate::widgets::MANAGE_FONTS {
+                        let _ = app.run("font.manage", json!({}));
                     } else {
                         *font = app.previews.font_stored(&f);
                     }

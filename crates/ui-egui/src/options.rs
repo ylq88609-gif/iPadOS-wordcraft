@@ -120,13 +120,26 @@ pub const UNITS: [(Unit, &str); 5] = [
     (Unit::Picas, "Picas"),
 ];
 
-/// The pane names, in [`PANES`] order.
+const UI_PANES: [&str; 9] = [
+    "general",
+    "display",
+    "proofing",
+    "save",
+    "language",
+    "fonts",
+    "accessibility",
+    "advanced",
+    "agents",
+];
+
+/// The pane names, in [`UI_PANES`] order.
 fn pane_label(id: &str) -> &'static str {
     match id {
         "display" => "Display",
         "proofing" => "Proofing",
         "save" => "Save",
         "language" => "Language",
+        "fonts" => "Fonts",
         "accessibility" => "Accessibility",
         "advanced" => "Advanced",
         "agents" => "Agents",
@@ -139,12 +152,12 @@ pub fn page(app: &mut WordApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
     ui.label(RichText::new(tl!("Options")).font(semibold(26.0)));
     ui.add_space(16.0);
-    let current = if PANES.contains(&app.ui.options_pane.as_str()) { app.ui.options_pane.clone() } else { "general".to_string() };
+    let current = if UI_PANES.contains(&app.ui.options_pane.as_str()) || PANES.contains(&app.ui.options_pane.as_str()) { app.ui.options_pane.clone() } else { "general".to_string() };
     let rtl = crate::rtl::on();
     let body = |ui: &mut Ui| {
         crate::rtl::vertical(ui, |ui| {
             ui.set_width(170.0);
-            for id in PANES {
+            for id in UI_PANES {
                 let label = tl!(pane_label(id));
                 let active = current == id;
                 let (r, resp) = ui.allocate_exact_size(vec2(170.0, 30.0), egui::Sense::click());
@@ -179,6 +192,7 @@ pub fn page(app: &mut WordApp, ui: &mut Ui) {
                 "proofing" => proofing(app, ui),
                 "save" => save(app, ui),
                 "language" => language(app, ui),
+                "fonts" => fonts(app, ui),
                 "accessibility" => accessibility(app, ui),
                 "advanced" => advanced(app, ui),
                 "agents" => agents(ui),
@@ -549,6 +563,406 @@ fn language(app: &mut WordApp, ui: &mut Ui) {
     section(ui, "Dictionaries");
     dictionaries(app, ui);
     crate::language_packs::add_language_window(app, &ui.ctx().clone());
+}
+
+fn is_bundled_open_font(family: &str) -> bool {
+    let f = family.trim().to_ascii_lowercase();
+    matches!(
+        f.as_str(),
+        "source sans 3"
+            | "source serif 4"
+            | "inter"
+            | "jetbrains mono"
+            | "source han sans sc"
+            | "source han serif sc"
+            | "source han sans tc"
+            | "source han serif tc"
+            | "source han sans jp"
+            | "source han serif jp"
+            | "noto sans cjk sc"
+            | "noto serif cjk sc"
+            | "noto sans cjk tc"
+            | "noto serif cjk tc"
+            | "noto sans cjk hk"
+            | "noto serif cjk hk"
+            | "noto sans cjk jp"
+            | "noto serif cjk jp"
+            | "noto sans cjk kr"
+            | "noto serif cjk kr"
+            | "noto sans mono cjk sc"
+            | "noto sans mono cjk tc"
+            | "noto sans mono cjk hk"
+            | "noto sans mono cjk jp"
+            | "noto sans mono cjk kr"
+            | "carlito"
+            | "caladea"
+            | "arimo"
+            | "tinos"
+            | "cousine"
+            | "liberation sans"
+            | "liberation serif"
+            | "liberation mono"
+    ) || f.starts_with("source sans 3 ")
+        || f.starts_with("source serif 4 ")
+        || f.starts_with("inter ")
+        || f.starts_with("noto sans cjk ")
+        || f.starts_with("noto serif cjk ")
+        || f.starts_with("source han ")
+}
+
+const DEFAULT_FONT_TEST_TEXT: &str = "中文：中华人民共和国，中文字体测试。\n英文：The quick brown fox jumps over the lazy dog.\n日文：日本語のフォントテスト。\n数字：0123456789。";
+
+/// File › Options › Fonts: three-subpage Font Management UI (Font List, Font Preview, Font Management & Licensing).
+fn fonts(app: &mut WordApp, ui: &mut Ui) {
+    let tab_id = egui::Id::unique("options_fonts_subtab");
+    let mut subtab = ui.data(|d| d.get_temp::<u8>(tab_id)).unwrap_or(0);
+
+    ui.horizontal(|ui| {
+        for (idx, title) in [
+            (0u8, tl!("Font List (字体列表)")),
+            (1u8, tl!("Font Preview (字体预览)")),
+            (2u8, tl!("Font Management (字体管理与授权)")),
+        ] {
+            if ui.selectable_label(subtab == idx, title).clicked() {
+                subtab = idx;
+            }
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button(tl!("Import Font… (导入字体)")).clicked() {
+                let _ = app.run("font.add", json!({}));
+            }
+        });
+    });
+    ui.data_mut(|d| d.insert_temp(tab_id, subtab));
+    ui.separator();
+
+    match subtab {
+        0 => fonts_list_subpage(app, ui),
+        1 => fonts_preview_subpage(app, ui),
+        _ => fonts_manage_subpage(app, ui),
+    }
+}
+
+fn fonts_list_subpage(app: &mut WordApp, ui: &mut Ui) {
+    let db = wordcraft_fonts::FontDb::global();
+    let user_list = db.user_fonts();
+    let user_families: std::collections::HashSet<String> = user_list
+        .iter()
+        .flat_map(|u| u.families())
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+    let ea_set: std::collections::HashSet<String> = db
+        .east_asian_families()
+        .into_iter()
+        .map(|f| f.to_ascii_lowercase())
+        .collect();
+
+    let search_id = egui::Id::unique("options_fonts_search");
+    let filter_id = egui::Id::unique("options_fonts_source_filter");
+    let mut query = ui.data(|d| d.get_temp::<String>(search_id)).unwrap_or_default();
+    let mut filter = ui.data(|d| d.get_temp::<u8>(filter_id)).unwrap_or(0);
+
+    ui.horizontal(|ui| {
+        ui.label(tl!("Search:"));
+        ui.add(egui::TextEdit::singleline(&mut query).desired_width(200.0).hint_text(tl!("Filter by font name…")));
+        ui.add_space(8.0);
+        for (idx, label) in [
+            (0u8, tl!("All")),
+            (1u8, tl!("Built-in (内置)")),
+            (2u8, tl!("User (用户导入)")),
+            (3u8, tl!("System (系统)")),
+        ] {
+            if ui.selectable_label(filter == idx, label).clicked() {
+                filter = idx;
+            }
+        }
+    });
+    ui.data_mut(|d| {
+        d.insert_temp(search_id, query.clone());
+        d.insert_temp(filter_id, filter);
+    });
+    ui.add_space(6.0);
+
+    let all_families = db.families();
+    let q_lower = query.trim().to_lowercase();
+    let mut rows = Vec::new();
+    for fam in &all_families {
+        if fam.starts_with('.') {
+            continue;
+        }
+        let shown = app.previews.font_shown(fam);
+        if !q_lower.is_empty() && !fam.to_lowercase().contains(&q_lower) && !shown.to_lowercase().contains(&q_lower) {
+            continue;
+        }
+        let lower = fam.to_ascii_lowercase();
+        let is_user = user_families.contains(&lower);
+        let is_bundled = !is_user && is_bundled_open_font(fam);
+        match filter {
+            1 if !is_bundled => continue,
+            2 if !is_user => continue,
+            3 if is_bundled || is_user => continue,
+            _ => {}
+        }
+        let is_ea = ea_set.contains(&lower);
+        let styles = db.styles(fam);
+        rows.push((fam.clone(), shown, is_bundled, is_user, is_ea, styles));
+    }
+
+    note(
+        ui,
+        &format!(
+            "Showing {} font families ({} user-imported files in sandbox).",
+            rows.len(),
+            user_list.len()
+        ),
+    );
+    ui.add_space(4.0);
+
+    egui::ScrollArea::vertical()
+        .id_salt("options_fonts_list_scroll")
+        .max_height(330.0)
+        .show(ui, |ui| {
+            crate::rtl::Table::new("options_fonts_table")
+                .columns(4)
+                .spacing(vec2(12.0, 6.0))
+                .show(ui, |t| {
+                    t.row(|r| {
+                        r.cell(|ui| ui.label(RichText::new(tl!("Font Name (字体名称)")).strong()));
+                        r.cell(|ui| ui.label(RichText::new(tl!("Type (类型)")).strong()));
+                        r.cell(|ui| ui.label(RichText::new(tl!("Weights / Styles (字重)")).strong()));
+                        r.cell(|ui| ui.label(RichText::new(tl!("Source (来源)")).strong()));
+                    });
+                    for (fam, shown, is_bundled, is_user, is_ea, styles) in rows {
+                        t.row(|r| {
+                            r.cell(|ui| {
+                                let label = if shown.eq_ignore_ascii_case(&fam) {
+                                    shown.clone()
+                                } else {
+                                    format!("{shown} ({fam})")
+                                };
+                                ui.add(egui::Label::new(label).truncate());
+                            });
+                            r.cell(|ui| {
+                                let kind = if is_ea {
+                                    tl!("CJK / East Asian")
+                                } else if fam.to_ascii_lowercase().contains("mono") {
+                                    tl!("Monospace")
+                                } else if fam.to_ascii_lowercase().contains("serif")
+                                    || matches!(fam.to_ascii_lowercase().as_str(), "caladea" | "tinos")
+                                {
+                                    tl!("Serif")
+                                } else {
+                                    tl!("Sans / Document")
+                                };
+                                ui.label(RichText::new(kind).small());
+                            });
+                            r.cell(|ui| {
+                                let st = if styles.is_empty() {
+                                    "Regular".to_string()
+                                } else {
+                                    styles.join(", ")
+                                };
+                                ui.add(egui::Label::new(RichText::new(st).small()).truncate());
+                            });
+                            r.cell(|ui| {
+                                let badge = if is_user {
+                                    tl!("User Imported (用户导入)")
+                                } else if is_bundled {
+                                    tl!("Built-in OFL (内置字体)")
+                                } else {
+                                    tl!("System Fallback (系统字体)")
+                                };
+                                ui.label(RichText::new(badge).small().weak());
+                            });
+                        });
+                    }
+                });
+        });
+}
+
+fn fonts_preview_subpage(app: &mut WordApp, ui: &mut Ui) {
+    let fam_id = egui::Id::unique("options_fonts_preview_family");
+    let size_id = egui::Id::unique("options_fonts_preview_size");
+    let bold_id = egui::Id::unique("options_fonts_preview_bold");
+    let italic_id = egui::Id::unique("options_fonts_preview_italic");
+    let text_id = egui::Id::unique("options_fonts_preview_text");
+
+    let families = app.previews.families();
+    let default_fam = families.first().cloned().unwrap_or_else(|| "Source Serif 4".to_string());
+    let mut selected_fam = ui.data(|d| d.get_temp::<String>(fam_id)).unwrap_or(default_fam);
+    let mut pt = ui.data(|d| d.get_temp::<f32>(size_id)).unwrap_or(14.0).clamp(8.0, 48.0);
+    let mut bold = ui.data(|d| d.get_temp::<bool>(bold_id)).unwrap_or(false);
+    let mut italic = ui.data(|d| d.get_temp::<bool>(italic_id)).unwrap_or(false);
+    let mut sample_text = ui
+        .data(|d| d.get_temp::<String>(text_id))
+        .unwrap_or_else(|| DEFAULT_FONT_TEST_TEXT.to_string());
+
+    ui.horizontal(|ui| {
+        ui.label(tl!("Font:"));
+        let prev = app.previews.font_preview_fn();
+        if let Some(picked) = crate::widgets::font_combo(ui, "opt_font_prev_combo", 220.0, &selected_fam, &families, Some(&*prev)) {
+            if picked == crate::widgets::ADD_FONT {
+                let _ = app.run("font.add", json!({}));
+            } else if picked != crate::widgets::MANAGE_FONTS && picked != crate::widgets::LOAD_SYSTEM_FONTS {
+                selected_fam = picked;
+            }
+        }
+        ui.add_space(8.0);
+        ui.label(tl!("Size:"));
+        ui.add(egui::DragValue::new(&mut pt).range(8.0..=48.0).speed(0.5).suffix(" pt"));
+        ui.checkbox(&mut bold, tl!("Bold"));
+        ui.checkbox(&mut italic, tl!("Italic"));
+    });
+
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(tl!("Test text (中文 / English / 日本語 / 0-9):")).strong());
+        if ui.small_button(tl!("Reset Default Sample (重置测试文本)")).clicked() {
+            sample_text = DEFAULT_FONT_TEST_TEXT.to_string();
+        }
+    });
+    ui.add(egui::TextEdit::multiline(&mut sample_text).desired_rows(4).desired_width(580.0));
+
+    ui.data_mut(|d| {
+        d.insert_temp(fam_id, selected_fam.clone());
+        d.insert_temp(size_id, pt);
+        d.insert_temp(bold_id, bold);
+        d.insert_temp(italic_id, italic);
+        d.insert_temp(text_id, sample_text.clone());
+    });
+
+    ui.add_space(8.0);
+    ui.label(RichText::new(tl!("Live Document Engine Render Preview (排版引擎实时渲染预览):")).strong());
+
+    let stored_fam = app.previews.font_stored(&selected_fam);
+    let dark = app.session.view.dark_mode;
+    let paper = app.session.doc.settings.page_color.unwrap_or(wordcraft_doc::Rgb(255, 255, 255));
+    let mut render_options = crate::canvas::screen_render_options();
+    render_options.dark = dark;
+    render_options.dark_paper = wordcraft_render::DARK_PAPER;
+    let display_paper = render_options.paper_of(&app.session.doc);
+    let props = wordcraft_doc::props::CharProps {
+        font: Some(stored_fam.clone()),
+        font_ea: Some(stored_fam.clone()),
+        size: Some(pt),
+        bold: Some(bold),
+        italic: Some(italic),
+        ..Default::default()
+    };
+    let (w, h) = (580.0, 150.0);
+    let ppp = ui.ctx().pixels_per_point();
+    let key = format!("fontmgr_prev:{sample_text}:{stored_fam}:{pt}:{bold}:{italic}:{paper:?}:{dark}:{ppp}");
+    let tex = app
+        .previews
+        .get_or(ui.ctx(), &key, || crate::previews::font_sample(&sample_text, &props, None, (w, h, ppp), paper, dark));
+    let (rect, _) = ui.allocate_exact_size(vec2(w + 4.0, h + 4.0), egui::Sense::hover());
+    let t = Tokens::get(ui.ctx());
+    ui.painter().rect(
+        rect,
+        6.0,
+        crate::theme::c32(display_paper),
+        egui::Stroke::new(1.0, t.border),
+        egui::StrokeKind::Inside,
+    );
+    if let Some(tex) = tex {
+        let full = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+        ui.painter().image(
+            tex.id(),
+            egui::Rect::from_min_size(rect.min + vec2(2.0, 2.0), (tex.size_vec2() / ppp).min(vec2(w, h))),
+            full,
+            egui::Color32::WHITE,
+        );
+    }
+}
+
+fn fonts_manage_subpage(app: &mut WordApp, ui: &mut Ui) {
+    let db = wordcraft_fonts::FontDb::global();
+    let confirm_id = egui::Id::unique("options_fonts_confirm_delete");
+    let mut pending_delete = ui.data(|d| d.get_temp::<Option<String>>(confirm_id)).flatten();
+
+    section(ui, "Font Actions (字体操作)");
+    ui.horizontal(|ui| {
+        if ui.button(tl!("Import Font File… (导入字体 TTF/OTF/TTC/WOFF/WOFF2)")).clicked() {
+            let _ = app.run("font.add", json!({}));
+        }
+        if ui.button(tl!("Refresh Font List (刷新字体列表)")).clicked() {
+            if let Some(dir) = db.user_font_dir() {
+                let _ = db.load_user_fonts(&dir);
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                let _ = db.load_system_fonts();
+            }
+            app.previews.fonts_changed();
+            app.session.relayout();
+            app.status(tl!("Font list refreshed."));
+        }
+    });
+
+    if let Some(dir) = db.user_font_dir() {
+        let mb = db.loaded_font_bytes() as f64 / (1024.0 * 1024.0);
+        note(
+            ui,
+            &format!(
+                "Sandbox User Font Directory: {} (Loaded font heap: {:.1} MB; single file limit: 50 MB)",
+                dir.display(),
+                mb
+            ),
+        );
+    }
+
+    ui.add_space(6.0);
+    section(ui, "User Imported Fonts (用户导入字体管理)");
+    let user_fonts = db.user_fonts();
+    if user_fonts.is_empty() {
+        note(
+            ui,
+            "No user-imported fonts yet. Click \"Import Font File…\" above to import .ttf, .otf, .ttc, .otc, .woff or .woff2 fonts from the iPad Files app or iCloud Drive.",
+        );
+    } else {
+        egui::ScrollArea::vertical()
+            .id_salt("options_user_fonts_scroll")
+            .max_height(150.0)
+            .show(ui, |ui| {
+                for uf in &user_fonts {
+                    let families = uf.families();
+                    let primary_family = families.first().cloned().unwrap_or_else(|| uf.file.clone());
+                    let styles: Vec<&str> = uf.faces.iter().map(|(_, s)| s.as_str()).collect();
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(families.join(", ")).strong());
+                        ui.label(RichText::new(format!("[{}] ({})", styles.join(", "), uf.file)).small().weak());
+                        if pending_delete.as_deref() == Some(primary_family.as_str()) {
+                            ui.label(RichText::new(tl!("Confirm delete? (确认删除？)")).small());
+                            if ui.small_button(tl!("Confirm (确认删除)")).clicked() {
+                                let _ = app.run("font.remove", json!({"family": primary_family}));
+                                pending_delete = None;
+                            }
+                            if ui.small_button(tl!("Cancel (取消)")).clicked() {
+                                pending_delete = None;
+                            }
+                        } else if ui.small_button(tl!("Delete (删除)")).clicked() {
+                            pending_delete = Some(primary_family.clone());
+                        }
+                    });
+                }
+            });
+    }
+    ui.data_mut(|d| d.insert_temp(confirm_id, pending_delete));
+    note(ui, "Built-in open-source fonts are protected and cannot be deleted by user operations.");
+
+    ui.add_space(8.0);
+    section(ui, "Font Sources & Licensing Notice (字体来源与开源授权说明)");
+    egui::ScrollArea::vertical()
+        .id_salt("options_font_licenses_scroll")
+        .max_height(130.0)
+        .show(ui, |ui| {
+            ui.label(
+                RichText::new(
+                    "1. 合规声明（用户自定义导入字体）：用户通过“导入字体”功能安装的字体仅保存在本机沙盒目录供个人使用，WordCraft 不会重新分发任何用户导入的字体。请确保您对所导入的字体拥有合法使用权限。\n                     2. 内置中/日韩字体（SIL Open Font License 1.1）：\n                     • Source Han Sans SC / Noto Sans CJK SC & JP（思源黑体，替代微软雅黑/等线/黑体/Yu Gothic/Meiryo）— Copyright Adobe & Google Corp.\n                     • Source Han Serif SC / Noto Serif CJK SC & JP（思源宋体，替代宋体/仿宋/楷体/MS Mincho）— Copyright Adobe & Google Corp.\n                     3. 内置西文度量兼容字体（SIL Open Font License 1.1 / Apache 2.0）：\n                     • Carlito（替代 Calibri）、Caladea（替代 Cambria）、Liberation Sans / Arimo（替代 Arial）、Liberation Serif / Tinos（替代 Times New Roman）、Liberation Mono / Cousine（替代 Courier New）\n                     • Source Sans 3、Source Serif 4、Inter、JetBrains Mono（随应用附带完整 OFL-1.1 许可证文本）。",
+                )
+                .small(),
+            );
+        });
 }
 
 /// Draws Accessibility options: the animation setting and Read Aloud speed and skip-citations.

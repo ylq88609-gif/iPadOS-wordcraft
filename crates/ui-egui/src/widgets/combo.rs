@@ -126,6 +126,9 @@ pub fn combo_hint(
 /// caller runs `font.add`, which shows a file picker. Not a family name anyone can type.
 pub const ADD_FONT: &str = "\u{1}font.add";
 
+/// What [`font_combo`] returns when "Manage Fonts…" is chosen: opens File › Options › Fonts.
+pub const MANAGE_FONTS: &str = "\u{1}font.manage";
+
 /// What [`font_combo`] returns when "Load System Installed Fonts…" is chosen on web: the
 /// caller runs `font.loadSystem`.
 pub const LOAD_SYSTEM_FONTS: &str = "\u{1}font.loadSystem";
@@ -628,6 +631,9 @@ fn combo_impl(ui: &mut Ui, options: ComboOptions<'_>) -> Option<String> {
                             ui.separator();
                             if ui.button(tl!("Add Font…")).clicked() {
                                 picked = Some(ADD_FONT.to_string());
+                            }
+                            if ui.button(tl!("Manage Fonts…")).clicked() {
+                                picked = Some(MANAGE_FONTS.to_string());
                             }
                             #[cfg(target_arch = "wasm32")]
                             if ui.button(tl!("Load System Installed Fonts…")).clicked() {

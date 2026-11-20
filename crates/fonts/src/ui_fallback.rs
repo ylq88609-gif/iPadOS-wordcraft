@@ -114,19 +114,36 @@ fn candidates(hans: bool, korean: bool) -> Vec<&'static str> {
             &["YuGothR.ttc", "meiryo.ttc", "msgothic.ttc"],
             &["malgun.ttf", "malgunsl.ttf", "gulim.ttc", "batang.ttc"],
         )
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(any(target_os = "macos", target_os = "ios")) {
         (
             &[
-                // An asset on macOS 10.15 and later (see `with_asset_data`).
+                // An asset on macOS 10.15+ / iPadOS (see `with_asset_data`), or bundled OFL CJK fonts.
                 "PingFang.ttc",
+                "/System/Library/Fonts/Core/PingFang.ttc",
+                "/System/Library/Fonts/CoreUI/PingFangUI.ttc",
+                "NotoSansCJK-Regular.ttc",
+                "SourceHanSansSC-Regular.otf",
+                "NotoSansCJKsc-Regular.otf",
                 "Hiragino Sans GB.ttc",
                 "STHeiti Light.ttc",
                 "STHeiti Medium.ttc",
                 // The system interface's own copy, present when the PingFang asset isn't.
                 "/System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc",
             ],
-            &["ヒラギノ角ゴシック W3.ttc", "Hiragino Sans W3.ttc"],
-            &["/System/Library/Fonts/AppleSDGothicNeo.ttc", "/System/Library/Fonts/Supplemental/AppleGothic.ttf"],
+            &[
+                "ヒラギノ角ゴシック W3.ttc",
+                "Hiragino Sans W3.ttc",
+                "/System/Library/Fonts/Core/HiraginoSans.ttc",
+                "NotoSansCJK-Regular.ttc",
+                "NotoSansCJKjp-Regular.otf",
+                "SourceHanSansJP-Regular.otf",
+            ],
+            &[
+                "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+                "/System/Library/Fonts/Core/AppleSDGothicNeo.ttc",
+                "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+                "NotoSansCJK-Regular.ttc",
+            ],
         )
     } else {
         (
@@ -167,9 +184,14 @@ fn candidates(hans: bool, korean: bool) -> Vec<&'static str> {
 fn hant_candidates() -> &'static [&'static str] {
     if cfg!(windows) {
         &["msjh.ttc", "msjh.ttf", "mingliu.ttc"]
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(any(target_os = "macos", target_os = "ios")) {
         &[
             "PingFang.ttc",
+            "/System/Library/Fonts/Core/PingFang.ttc",
+            "/System/Library/Fonts/CoreUI/PingFangUI.ttc",
+            "NotoSansCJK-Regular.ttc",
+            "SourceHanSansTC-Regular.otf",
+            "NotoSansCJKtc-Regular.otf",
             "Hiragino Sans CNS.ttc",
             "LiHeiPro.ttf",
             "/System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/PingFangUI.ttc",
@@ -222,7 +244,7 @@ pub fn system_cjk_ui_font_for(hans: bool, korean: bool, needed: &[char]) -> Opti
 fn arabic_candidates() -> &'static [&'static str] {
     if cfg!(windows) {
         &["segoeui.ttf", "tahoma.ttf", "arial.ttf"]
-    } else if cfg!(target_os = "macos") {
+    } else if cfg!(any(target_os = "macos", target_os = "ios")) {
         &["SFArabic.ttf", "GeezaPro.ttc", "Supplemental/GeezaPro.ttc", "Supplemental/Arial Unicode.ttf", "Supplemental/Arial.ttf"]
     } else {
         &[
@@ -344,7 +366,7 @@ mod tests {
             names.first(),
             Some(&if cfg!(windows) {
                 "malgun.ttf"
-            } else if cfg!(target_os = "macos") {
+            } else if cfg!(any(target_os = "macos", target_os = "ios")) {
                 "/System/Library/Fonts/AppleSDGothicNeo.ttc"
             } else {
                 "noto-cjk/NotoSansCJKkr-Regular.otf"
@@ -361,7 +383,7 @@ mod tests {
             hant_candidates().first(),
             Some(&if cfg!(windows) {
                 "msjh.ttc"
-            } else if cfg!(target_os = "macos") {
+            } else if cfg!(any(target_os = "macos", target_os = "ios")) {
                 "PingFang.ttc"
             } else {
                 "noto-cjk/NotoSansCJK-Regular.ttc"
@@ -391,14 +413,14 @@ mod tests {
         std::fs::write(only_sc.join("noto-cjk/NotoSansCJK-Regular.ttc"), collection(&[face("Probe Sans SC")])).unwrap();
         assert!(hant_font_in(std::slice::from_ref(&only_sc), &['A']).is_none());
         std::fs::write(only_sc.join("noto-cjk/NotoSansCJK-Regular.ttc"), &pan).unwrap();
-        if !cfg!(windows) && !cfg!(target_os = "macos") {
+        if !cfg!(windows) && !cfg!(any(target_os = "macos", target_os = "ios")) {
             assert_eq!(hant_font_in(std::slice::from_ref(&only_sc), &['A']).map(|f| f.index), Some(3));
         }
         assert!(hant_font_in(std::slice::from_ref(&only_sc), &['體']).is_none());
         let user = dir.join("user-fonts");
         std::fs::create_dir_all(&user).unwrap();
         std::fs::write(user.join("NotoSansCJKtc-Regular.otf"), face("Probe Sans TC")).unwrap();
-        if !cfg!(windows) && !cfg!(target_os = "macos") {
+        if !cfg!(windows) && !cfg!(any(target_os = "macos", target_os = "ios")) {
             assert_eq!(hant_font_in(std::slice::from_ref(&user), &['A']).map(|f| f.family), Some("Probe Sans TC".to_string()));
         }
         let _ = std::fs::remove_dir_all(&dir);

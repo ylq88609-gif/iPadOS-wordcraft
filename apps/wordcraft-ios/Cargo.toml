@@ -1,0 +1,21 @@
+[package]
+name = "wordcraft-ios"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+name = "wordcraft_ios"
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+egui = { workspace = true }
+eframe = { workspace = true, default-features = false, features = ["wgpu", "default_fonts"] }
+wordcraft-engine = { workspace = true }
+wordcraft-fonts = { workspace = true }
+wordcraft-ui-egui = { workspace = true }
+serde_json = { workspace = true }
+log = "0.4"
+
+[lints.rust]
+unsafe_code = "allow"

@@ -54,7 +54,92 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         }
     }
     const SERIF: &[&str] = &["Caladea", "Times New Roman", "Liberation Serif", "Georgia", "Noto Serif", "DejaVu Serif", "Source Serif 4"];
-    const MONO: &[&str] = &["Courier New", "Liberation Mono", "Menlo", "Consolas", "DejaVu Sans Mono", "JetBrains Mono"];
+    const MONO: &[&str] = &["Courier New", "Liberation Mono", "Cousine", "Menlo", "Consolas", "DejaVu Sans Mono", "JetBrains Mono"];
+    // Simplified Chinese sans-serif document fonts (Microsoft YaHei / 微软雅黑, DengXian / 等线, SimHei / 黑体):
+    // open-source Source Han Sans SC and Noto Sans CJK SC first, then Apple/Windows system faces, then bundled sans.
+    const CJK_SANS_SC: &[&str] = &[
+        "Source Han Sans SC",
+        "Noto Sans CJK SC",
+        "Noto Sans SC",
+        "PingFang SC",
+        "Hiragino Sans GB",
+        "Heiti SC",
+        "STHeiti",
+        "Microsoft YaHei",
+        "DengXian",
+        "SimHei",
+        "Source Sans 3",
+    ];
+    // Simplified Chinese serif & script document fonts (SimSun / 宋体, NSimSun / 新宋体, FangSong / 仿宋, KaiTi / 楷体):
+    // open-source Source Han Serif SC and Noto Serif CJK SC first, then Apple/Windows system faces, then bundled serif.
+    const CJK_SERIF_SC: &[&str] = &[
+        "Source Han Serif SC",
+        "Noto Serif CJK SC",
+        "Noto Serif SC",
+        "Songti SC",
+        "STSong",
+        "SimSun",
+        "NSimSun",
+        "KaiTi",
+        "STKaiti",
+        "FangSong",
+        "STFangsong",
+        "Source Serif 4",
+    ];
+    // Traditional Chinese sans-serif document fonts (Microsoft JhengHei / 微軟正黑體):
+    const CJK_SANS_TC: &[&str] = &[
+        "Source Han Sans TC",
+        "Source Han Sans HW TC",
+        "Noto Sans CJK TC",
+        "Noto Sans TC",
+        "PingFang TC",
+        "Hiragino Sans CNS",
+        "Microsoft JhengHei",
+        "Heiti TC",
+        "Source Sans 3",
+    ];
+    // Traditional Chinese serif document fonts (PMingLiU / 新細明體, MingLiU / 細明體, DFKai-SB / 標楷體):
+    const CJK_SERIF_TC: &[&str] = &[
+        "Source Han Serif TC",
+        "Noto Serif CJK TC",
+        "Noto Serif TC",
+        "Songti TC",
+        "PMingLiU",
+        "MingLiU",
+        "DFKai-SB",
+        "Kaiti TC",
+        "Source Serif 4",
+    ];
+    // Japanese gothic (sans-serif) document fonts (Yu Gothic, Meiryo, MS Gothic, Hiragino Sans):
+    const CJK_SANS_JP: &[&str] = &[
+        "Noto Sans CJK JP",
+        "Source Han Sans JP",
+        "Source Han Sans",
+        "Noto Sans JP",
+        "BIZ UDPGothic",
+        "BIZ UDGothic",
+        "Hiragino Sans",
+        "Hiragino Kaku Gothic ProN",
+        "Yu Gothic",
+        "Meiryo",
+        "MS Gothic",
+        "MS PGothic",
+        "Source Sans 3",
+    ];
+    // Japanese mincho (serif) document fonts (Yu Mincho, MS Mincho, Hiragino Mincho ProN):
+    const CJK_SERIF_JP: &[&str] = &[
+        "Noto Serif CJK JP",
+        "Source Han Serif JP",
+        "Source Han Serif",
+        "Noto Serif JP",
+        "BIZ UDPMincho",
+        "BIZ UDMincho",
+        "Hiragino Mincho ProN",
+        "Yu Mincho",
+        "MS Mincho",
+        "MS PMincho",
+        "Source Serif 4",
+    ];
     const ARIAL: &[&str] = &["Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
     const ARIAL_UNICODE: &[&str] = &["Arial", "Liberation Sans", "Helvetica", "Helvetica Neue", "Arimo", "Source Sans 3"];
     const TIMES: &[&str] = &["Liberation Serif", "Times", "Tinos", "Source Serif 4"];
@@ -72,9 +157,9 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     // Linux: Noto Sans Hebrew is the best option.
     #[cfg(windows)]
     const HEBREW: &[&str] = &["Noto Sans Hebrew", "David", "Miriam", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     const HEBREW: &[&str] = &["Helvetica", "Noto Sans Hebrew", "Arial", "Tahoma", "Geeza Pro", "DejaVu Sans", "Source Sans 3"];
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
     const HEBREW: &[&str] = &["Noto Sans Hebrew", "Segoe UI", "Arial", "Tahoma", "DejaVu Sans", "Source Sans 3"];
     // Thai document fonts (TH Sarabun New, Cordia New, the UPC families…): Thai faces, every one
     // with Thai letters; [`substitute`] prefers one with Latin letters and digits too, so a run
@@ -84,25 +169,25 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     // instead of OpenType ones; the shaper applies those, so their marks stack as they should.
     #[cfg(windows)]
     const THAI: &[&str] = &["Cordia New", "Leelawadee UI", "Leelawadee", "Tahoma", "Noto Sans Thai", "Browallia New", "Angsana New"];
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     const THAI: &[&str] = &["Thonburi", "Ayuthaya", "Sathu", "Krungthep", "Noto Sans Thai", "Tahoma"];
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
     const THAI: &[&str] = &["Noto Sans Thai", "Laksaman", "Garuda", "Waree", "Tlwg Typo", "Loma", "Umpush", "Noto Serif Thai"];
     // Serif Thai document fonts (Angsana New, EucrosiaUPC, Norasi…) prefer a serif Thai face.
     #[cfg(windows)]
     const THAI_SERIF: &[&str] = &["Angsana New", "AngsanaUPC", "Noto Serif Thai", "Cordia New", "Leelawadee UI", "Tahoma", "Noto Sans Thai"];
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     const THAI_SERIF: &[&str] = &["Sathu", "Noto Serif Thai", "Thonburi", "Ayuthaya", "Krungthep", "Noto Sans Thai", "Tahoma"];
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
     const THAI_SERIF: &[&str] = &["Noto Serif Thai", "Norasi", "Kinnari", "Noto Sans Thai", "Laksaman", "Garuda", "Waree"];
     // Khmer document fonts (Khmer OS …, Khmer Mool1…): a missing one is drawn in the system's
     // Khmer font, as Word does, not in whatever Khmer font the document happens to load: the Khmer
     // OS fonts are wider, so lines wrap and boxes overflow where Word's don't.
     #[cfg(windows)]
     const KHMER: &[&str] = &["Leelawadee UI", "Khmer UI", "DaunPenh", "MoolBoran", "Noto Sans Khmer"];
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
     const KHMER: &[&str] = &["Khmer Sangam MN", "Khmer MN", "Noto Sans Khmer"];
-    #[cfg(not(any(windows, target_os = "macos")))]
+    #[cfg(not(any(windows, target_os = "macos", target_os = "ios")))]
     const KHMER: &[&str] = &["Noto Sans Khmer", "Noto Serif Khmer"];
     // Palatino Linotype / Book Antiqua: macOS ships the same design as "Palatino"; open
     // look-alikes with matching metrics (TeX Gyre Pagella, URW P052 / Palladio) on Linux.
@@ -122,7 +207,7 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
         "DejaVu Serif",
         "Source Serif 4",
     ];
-    let f = family.to_ascii_lowercase();
+    let f = family.trim().to_ascii_lowercase();
     if is_thai_serif(&f) {
         return (THAI_SERIF, true);
     }
@@ -140,6 +225,24 @@ fn substitutes_by_name(family: &str) -> (&'static [&'static str], bool) {
     }
     if is_persian_sans(&f) {
         return (ARABIC_SANS, true);
+    }
+    if is_cjk_serif_sc(&f) {
+        return (CJK_SERIF_SC, true);
+    }
+    if is_cjk_sans_sc(&f) {
+        return (CJK_SANS_SC, true);
+    }
+    if is_cjk_serif_tc(&f) {
+        return (CJK_SERIF_TC, true);
+    }
+    if is_cjk_sans_tc(&f) {
+        return (CJK_SANS_TC, true);
+    }
+    if is_cjk_serif_jp(&f) {
+        return (CJK_SERIF_JP, true);
+    }
+    if is_cjk_sans_jp(&f) {
+        return (CJK_SANS_JP, true);
     }
     match f.as_str() {
         "palatino linotype" | "book antiqua" | "palatino" => (PALATINO, true),
@@ -437,6 +540,207 @@ fn is_khmer(f: &str) -> bool {
     f.starts_with("khmer")
         || f.contains("khmer")
         || matches!(f, "daunpenh" | "moolboran" | "limon" | "battambang" | "bokor" | "content" | "dangrek" | "angkor")
+}
+
+/// Simplified Chinese sans-serif document fonts (Microsoft YaHei, DengXian, SimHei, Source Han Sans SC, Noto Sans CJK SC).
+fn is_cjk_sans_sc(f: &str) -> bool {
+    matches!(
+        f,
+        "microsoft yahei"
+            | "microsoft yahei ui"
+            | "microsoft yahei light"
+            | "微软雅黑"
+            | "微软雅黑 light"
+            | "dengxian"
+            | "dengxian light"
+            | "等线"
+            | "等线 light"
+            | "simhei"
+            | "黑体"
+            | "stheitisc"
+            | "stheiti"
+            | "华文黑体"
+            | "华文细黑"
+            | "stxihei"
+            | "heiti sc"
+            | "黑体-简"
+            | "pingfang sc"
+            | "苹方-简"
+            | "hiragino sans gb"
+            | "冬青黑体简体中文"
+            | "source han sans sc"
+            | "source han sans cn"
+            | "思源黑体"
+            | "思源黑体 cn"
+            | "noto sans cjk sc"
+            | "noto sans sc"
+            | "noto sans mono cjk sc"
+    )
+}
+
+/// Simplified Chinese serif & Kai/FangSong document fonts (SimSun, NSimSun, FangSong, KaiTi, Source Han Serif SC, Noto Serif CJK SC).
+fn is_cjk_serif_sc(f: &str) -> bool {
+    matches!(
+        f,
+        "simsun"
+            | "nsimsun"
+            | "simsun-extb"
+            | "宋体"
+            | "新宋体"
+            | "fangsong"
+            | "fangsong_gb2312"
+            | "仿宋"
+            | "仿宋_gb2312"
+            | "kaiti"
+            | "kaiti_gb2312"
+            | "楷体"
+            | "楷体_gb2312"
+            | "stsong"
+            | "华文宋体"
+            | "stzhongsong"
+            | "华文中宋"
+            | "stkaiti"
+            | "华文楷体"
+            | "stfangsong"
+            | "华文仿宋"
+            | "songti sc"
+            | "宋体-简"
+            | "kaiti sc"
+            | "楷体-简"
+            | "baoli sc"
+            | "source han serif sc"
+            | "source han serif cn"
+            | "思源宋体"
+            | "思源宋体 cn"
+            | "noto serif cjk sc"
+            | "noto serif sc"
+    )
+}
+
+/// Traditional Chinese sans-serif document fonts (Microsoft JhengHei, PingFang TC, Source Han Sans TC, Noto Sans CJK TC).
+fn is_cjk_sans_tc(f: &str) -> bool {
+    matches!(
+        f,
+        "microsoft jhenghei"
+            | "microsoft jhenghei ui"
+            | "microsoft jhenghei light"
+            | "微軟正黑體"
+            | "微軟正黑體 light"
+            | "pingfang tc"
+            | "pingfang hk"
+            | "蘋方-繁"
+            | "蘋方-港"
+            | "heiti tc"
+            | "黑體-繁"
+            | "lihei pro"
+            | "儷黑 pro"
+            | "source han sans tc"
+            | "source han sans tw"
+            | "source han sans hk"
+            | "source han sans hw tc"
+            | "思源黑體"
+            | "noto sans cjk tc"
+            | "noto sans cjk hk"
+            | "noto sans tc"
+            | "noto sans hk"
+    )
+}
+
+/// Traditional Chinese serif document fonts (PMingLiU, MingLiU, DFKai-SB, Source Han Serif TC, Noto Serif CJK TC).
+fn is_cjk_serif_tc(f: &str) -> bool {
+    matches!(
+        f,
+        "pmingliu"
+            | "pmingliu-extb"
+            | "mingliu"
+            | "mingliu-extb"
+            | "mingliu_hkscs"
+            | "新細明體"
+            | "細明體"
+            | "dfkai-sb"
+            | "標楷體"
+            | "biaukai"
+            | "songti tc"
+            | "宋體-繁"
+            | "kaiti tc"
+            | "楷體-繁"
+            | "lisong pro"
+            | "儷宋 pro"
+            | "source han serif tc"
+            | "source han serif tw"
+            | "source han serif hk"
+            | "思源宋體"
+            | "noto serif cjk tc"
+            | "noto serif cjk hk"
+            | "noto serif tc"
+    )
+}
+
+/// Japanese gothic (sans-serif) document fonts (Yu Gothic, Meiryo, MS Gothic, Hiragino Sans, Noto Sans CJK JP, Source Han Sans JP).
+fn is_cjk_sans_jp(f: &str) -> bool {
+    matches!(
+        f,
+        "yu gothic"
+            | "yu gothic ui"
+            | "yu gothic medium"
+            | "yu gothic light"
+            | "yugothic"
+            | "游ゴシック"
+            | "游ゴシック medium"
+            | "游ゴシック体"
+            | "meiryo"
+            | "meiryo ui"
+            | "メイリオ"
+            | "ms gothic"
+            | "ms pgothic"
+            | "ms ui gothic"
+            | "ｍｓ ゴシック"
+            | "ｍｓ ｐゴシック"
+            | "ＭＳ ゴシック"
+            | "ＭＳ Ｐゴシック"
+            | "hiragino sans"
+            | "hiragino kaku gothic pron"
+            | "hiragino kaku gothic pro"
+            | "ヒラギノ角ゴ pron"
+            | "ヒラギノ角ゴ pro"
+            | "ヒラギノ角ゴシック"
+            | "biz udpgothic"
+            | "biz udgothic"
+            | "source han sans jp"
+            | "source han sans"
+            | "源ノ角ゴシック"
+            | "noto sans cjk jp"
+            | "noto sans jp"
+            | "noto sans mono cjk jp"
+    )
+}
+
+/// Japanese mincho (serif) document fonts (Yu Mincho, MS Mincho, Hiragino Mincho ProN, Noto Serif CJK JP, Source Han Serif JP).
+fn is_cjk_serif_jp(f: &str) -> bool {
+    matches!(
+        f,
+        "yu mincho"
+            | "yumincho"
+            | "游明朝"
+            | "游明朝体"
+            | "ms mincho"
+            | "ms pmincho"
+            | "ｍｓ 明朝"
+            | "ｍｓ ｐ明朝"
+            | "ＭＳ 明朝"
+            | "ＭＳ Ｐ明朝"
+            | "hiragino mincho pron"
+            | "hiragino mincho pro"
+            | "ヒラギノ明朝 pron"
+            | "ヒラギノ明朝 pro"
+            | "biz udpmincho"
+            | "biz udmincho"
+            | "source han serif jp"
+            | "source han serif"
+            | "源ノ明朝"
+            | "noto serif cjk jp"
+            | "noto serif jp"
+    )
 }
 
 /// Hebrew document fonts.
@@ -1142,5 +1446,33 @@ mod tests {
         assert!(is_thai_family(&thai_list) && !is_thai_family(&named_list));
         let cached = fallback_list_cache().lock().unwrap_or_else(|e| e.into_inner()).classes.len();
         assert!(cached >= 2, "{cached} lists classified");
+    }
+
+    #[test]
+    fn cjk_document_fonts_substitute_matching_sans_or_serif_cjk_faces() {
+        for f in ["Microsoft YaHei", "微软雅黑", "DengXian", "等线", "SimHei", "黑体"] {
+            assert!(has_named_substitutes(f), "{f}");
+            let subs = substitutes(f);
+            assert_eq!(subs.first(), Some(&"Source Han Sans SC"), "{f}");
+            assert!(subs.contains(&"Noto Sans CJK SC"), "{f}");
+        }
+        for f in ["SimSun", "宋体", "NSimSun", "新宋体", "KaiTi", "楷体", "FangSong", "仿宋"] {
+            assert!(has_named_substitutes(f), "{f}");
+            let subs = substitutes(f);
+            assert_eq!(subs.first(), Some(&"Source Han Serif SC"), "{f}");
+            assert!(subs.contains(&"Noto Serif CJK SC"), "{f}");
+        }
+        for f in ["Yu Gothic", "Meiryo", "MS Gothic", "ＭＳ ゴシック"] {
+            assert!(has_named_substitutes(f), "{f}");
+            let subs = substitutes(f);
+            assert_eq!(subs.first(), Some(&"Noto Sans CJK JP"), "{f}");
+            assert!(subs.contains(&"Source Han Sans JP"), "{f}");
+        }
+        for f in ["Yu Mincho", "MS Mincho", "ＭＳ 明朝"] {
+            assert!(has_named_substitutes(f), "{f}");
+            let subs = substitutes(f);
+            assert_eq!(subs.first(), Some(&"Noto Serif CJK JP"), "{f}");
+            assert!(subs.contains(&"Source Han Serif JP"), "{f}");
+        }
     }
 }

@@ -11,8 +11,8 @@ use crate::theme::Tokens;
 
 /// Handle radius, the radius a press grabs a handle within, and the pointer travel that turns a
 /// press into a drag (screen points).
-const HANDLE_R: f32 = 4.5;
-const GRAB_R: f32 = 8.0;
+const HANDLE_R: f32 = if cfg!(target_os = "ios") { 6.5 } else { 4.5 };
+const GRAB_R: f32 = if cfg!(target_os = "ios") { 18.0 } else { 8.0 };
 const DRAG_START: f32 = 3.0;
 /// Frames smaller than this (screen points) show only corner handles on that axis.
 const EDGE_HANDLES_FROM: f32 = 40.0;

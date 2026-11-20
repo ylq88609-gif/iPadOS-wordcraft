@@ -23,6 +23,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("font.list", "Added Fonts", "Home › Font", list).params(r#"{"all"?: bool (also every available family)}"#).pure(),
         CommandSpec::new("font.remove", "Remove Added Font", "Home › Font", remove).params(r#"{"family": string}"#).pure(),
         CommandSpec::new("font.loadSystem", "Load System Installed Fonts…", "Home › Font", load_system).pure(),
+        CommandSpec::new("font.manage", "Manage Fonts…", "Home › Font", manage).pure(),
         CommandSpec::new("font.missing", "Missing Fonts", "Status Bar", missing)
             .params(r#"{} → {"missing": [{"font": string, "shownAs": [string] (the families drawn instead), "metricCompatible": bool (its substitute measures like the font)}]} — the text the current view shows"#)
             .pure(),
@@ -32,6 +33,11 @@ pub fn specs() -> Vec<CommandSpec> {
 fn load_system(s: &mut Session, _v: &Value) -> CmdResult {
     s.push_ui_request(json!({"open": "loadSystemFonts"}));
     Ok(json!({"pending": true}))
+}
+
+fn manage(s: &mut Session, _v: &Value) -> CmdResult {
+    s.push_ui_request(json!({"open": "options", "pane": "fonts"}));
+    Ok(json!({"opened": true}))
 }
 
 fn font_json(f: &UserFont) -> Value {

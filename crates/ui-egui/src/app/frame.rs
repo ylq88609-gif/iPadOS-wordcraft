@@ -79,6 +79,10 @@ impl WordApp {
     pub(super) fn paint_window(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, t: theme::Tokens) {
         let window = self.windows.shown();
         let moved = |app: &WordApp| app.windows.shown() != window;
+        #[cfg(target_os = "ios")]
+        egui::Panel::top("ios_safe_area_top").exact_size(24.0).frame(egui::Frame::NONE.fill(t.tab_strip)).show(ui, |_| {});
+        #[cfg(target_os = "ios")]
+        egui::Panel::bottom("ios_safe_area_bottom").exact_size(16.0).frame(egui::Frame::NONE.fill(t.canvas)).show(ui, |_| {});
         if self.ui.backstage {
             backstage::show(self, ui);
         } else if !self.has_document() {

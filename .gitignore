@@ -8,3 +8,10 @@ plan/
 /.claude/
 /target-*/
 /craft-fonts/
+/_Backup_Before_Font_Alpha/
+/apps/wordcraft-ios/xcode-host/build/
+/apps/wordcraft-ios/xcode-host/Payload/
+/apps/wordcraft-ios/xcode-host/WordCraft.xcodeproj/
+/apps/wordcraft-ios/xcode-host/WordFonts/
+*.bak.*
+

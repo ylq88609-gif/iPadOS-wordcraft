@@ -80,7 +80,7 @@ fn words_param(v: &Value, k: &str) -> Result<Vec<String>, CmdError> {
 
 fn options(s: &mut Session, v: &Value) -> CmdResult {
     let pane = match p::str(v, "pane") {
-        Some(name) if PANES.contains(&name) => name,
+        Some(name) if PANES.contains(&name) || name == "fonts" => name,
         Some(name) => return Err(CmdError::Params(format!("unknown pane `{name}`; one of {}", PANES.join(", ")))),
         None => "general",
     };

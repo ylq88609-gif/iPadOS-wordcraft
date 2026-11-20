@@ -188,11 +188,18 @@ pub fn substitute_face(doc: &Document, font: &str) -> Option<FaceRef> {
 /// [`substitute_face`] is for the run's font), and the text goes to the run's font when it has the
 /// characters, else to the first fallback face that does.
 pub fn east_asian_substitute_face(doc: &Document, font_ea: &str, font: &str) -> Option<FaceRef> {
-    if font_ea.trim().is_empty() || !wordcraft_fonts::word::resolve(font_ea, false, false).substituted {
+    if font_ea.trim().is_empty() {
+        return None;
+    }
+    let ea_resolved = wordcraft_fonts::word::resolve(font_ea, false, false);
+    if !ea_resolved.substituted {
         return None;
     }
     // 日: one ideograph stands for the text, which isn't known yet.
     const IDEOGRAPH: char = '\u{65E5}';
+    if wordcraft_fonts::word::has_named_substitutes(font_ea) && ea_resolved.face.covers(IDEOGRAPH) {
+        return Some(ea_resolved.face);
+    }
     let primary = wordcraft_fonts::word::resolve(lookup_family(doc, font), false, false).face;
     if primary.covers(IDEOGRAPH) {
         return Some(primary);
